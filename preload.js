@@ -4,5 +4,5 @@ contextBridge.exposeInMainWorld('xbound', {
   appName: 'xBound VLDB26 Demo',
   loadPrecomputedEstimates: (benchmark, xboundParams) => ipcRenderer.invoke('xbound:load-precomputed-estimates', benchmark, xboundParams),
   loadWorkloadQueries: (benchmark) => ipcRenderer.invoke('xbound:load-workload-queries', benchmark),
-  estimateCustomQuery: (benchmark, sql) => ipcRenderer.invoke('xbound:estimate-custom-query', benchmark, sql)
+  estimateCustomQuery: (benchmark, sql, xboundParams, queryTag) => ipcRenderer.invoke('xbound:estimate-custom-query', benchmark, sql, xboundParams, queryTag)
 });

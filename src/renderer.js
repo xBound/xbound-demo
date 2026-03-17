@@ -19,7 +19,8 @@ const SYSTEM_COLORS = {
   'fabric dw': '#8ae8ff',
   xbound: '#D3D3D3'
 };
-const ESTIMATE_FONT = '15px IBM Plex Sans, sans-serif';
+const UI_FONT_FAMILY = '"Palatino Linotype", Palatino, "URW Palladio L", "Book Antiqua", serif';
+const ESTIMATE_FONT = `15px ${UI_FONT_FAMILY}`;
 
 let queryStore = Object.fromEntries(BENCHMARKS.map((name) => [name, {}]));
 const loadedBenchmarks = new Set();
@@ -103,7 +104,6 @@ const els = {
   sqlInput: document.getElementById('sqlInput'),
   statusText: document.getElementById('statusText'),
   xboundParams: document.getElementById('xboundParams'),
-  xboundParamsNote: document.getElementById('xboundParamsNote'),
   xboundParts: document.getElementById('xboundParts'),
   xboundL0Theta: document.getElementById('xboundL0Theta'),
   xboundHhTheta: document.getElementById('xboundHhTheta'),
@@ -135,6 +135,14 @@ function formatSql(sql) {
   const raw = String(sql || '').trim();
   if (!raw) return raw;
   return fallbackFormatSql(raw);
+}
+
+function isSelectCountQuery(sql) {
+  const normalized = String(sql || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+  return /^select\s+count\s*\(\s*\*\s*\)/.test(normalized);
 }
 
 function formatCardinality(value) {
@@ -283,7 +291,7 @@ function renderQErrorBarPlot(entries) {
     ctx.stroke();
 
     ctx.fillStyle = '#6b718c';
-    ctx.font = '12px IBM Plex Sans, sans-serif';
+    ctx.font = `12px ${UI_FONT_FAMILY}`;
     if (Math.abs(tick) < 1e-9) ctx.fillText('1.00x', 8, yy + 4);
     else ctx.fillText(`${Math.abs(tick).toFixed(2)}x`, 8, yy + 4);
   });
@@ -307,13 +315,13 @@ function renderQErrorBarPlot(entries) {
   if (xboundOverlay) {
     if (xboundOverlay.unsupported) {
       ctx.fillStyle = '#a33a3a';
-      ctx.font = '13px IBM Plex Sans, sans-serif';
+      ctx.font = `13px ${UI_FONT_FAMILY}`;
       const warningText = '⚠️ Query not supported in xBound';
       const textWidth = ctx.measureText(warningText).width;
       ctx.fillText(warningText, cssWidth - margin.right - textWidth - 4, margin.top - 12);
     } else if (xboundOverlay.zeroLowerBound) {
       ctx.fillStyle = '#a36a00';
-      ctx.font = '13px IBM Plex Sans, sans-serif';
+      ctx.font = `13px ${UI_FONT_FAMILY}`;
       const warningText = '⚠️ Lower bound is 0';
       const textWidth = ctx.measureText(warningText).width;
       ctx.fillText(warningText, cssWidth - margin.right - textWidth - 4, margin.top - 12);
@@ -401,7 +409,7 @@ function renderQErrorBarPlot(entries) {
     if (hasComparableLowerBound) {
       const symbol = entry.estimate < xboundOverlay.estimate ? '🤦' : '👌';
       const symbolY = (entry.signedQError || entry.qError) >= 0 ? qLabelY - 22 : qLabelY + 22;
-      ctx.font = '21px IBM Plex Sans, sans-serif';
+      ctx.font = `21px ${UI_FONT_FAMILY}`;
       const symbolWidth = ctx.measureText(symbol).width;
       ctx.fillText(symbol, centerX - symbolWidth / 2, symbolY);
       ctx.font = ESTIMATE_FONT;
@@ -432,7 +440,7 @@ function loadSystemIcon(key) {
 function drawLegend(ctx, centerX, startY) {
   const keys = ['duckdb', 'postgres', 'fabric dw'];
 
-  ctx.font = '14px IBM Plex Sans, sans-serif';
+  ctx.font = `14px ${UI_FONT_FAMILY}`;
   const iconSize = 22;
   const itemGap = 28;
   const iconGap = 8;
@@ -454,7 +462,7 @@ function drawLegend(ctx, centerX, startY) {
     }
 
     ctx.fillStyle = '#1f2a4d';
-    ctx.font = '14px IBM Plex Sans, sans-serif';
+    ctx.font = `14px ${UI_FONT_FAMILY}`;
     ctx.fillText(label, x, startY + 18);
     x += ctx.measureText(label).width + itemGap;
   });
@@ -623,12 +631,6 @@ function xboundParamCacheKey(benchmark) {
 
 function updateXboundParamsState() {
   if (!els.xboundParams) return;
-  const benchmark = els.benchmarkSelect.value;
-  if (els.xboundParamsNote) {
-    els.xboundParamsNote.textContent = benchmark === 'SO-CEB'
-      ? 'Using these values for SO-CEB xBound file selection.'
-      : 'Shown for all benchmarks; current xBound file matching is available for SO-CEB.';
-  }
 }
 
 async function ensureBenchmarkLoaded(benchmark) {
@@ -723,6 +725,11 @@ function bindEvents() {
   els.runBtn.addEventListener('click', async () => {
     setMode('run');
     const sql = getSqlText().trim();
+    if (!isSelectCountQuery(sql)) {
+      window.alert('Please keep the query as SELECT COUNT(*). Do not modify that part.');
+      els.statusText.textContent = 'Run blocked: only SELECT COUNT(*) queries are supported.';
+      return;
+    }
     const prettySql = formatSql(sql);
     if (sqlEditor) sqlEditor.setValue(prettySql);
     else els.sqlInput.value = prettySql;
@@ -732,14 +739,21 @@ function bindEvents() {
     if (isCustom && prettySql && window.xbound?.estimateCustomQuery) {
       els.statusText.textContent = 'Estimating custom query...';
       try {
-        const result = await window.xbound.estimateCustomQuery(els.benchmarkSelect.value, prettySql);
+        const result = await window.xbound.estimateCustomQuery(
+          els.benchmarkSelect.value,
+          prettySql,
+          xboundParamOptionsForBenchmark(els.benchmarkSelect.value),
+          els.querySelect.value
+        );
         if (result?.errors && Object.keys(result.errors).length) {
           console.error('[custom-query-estimation][errors]', result.errors);
         }
         const actual = Number(result?.actual);
         customQueryData = {
           sql: prettySql,
-          actual: Number.isFinite(actual) && actual > 0 ? actual : 1,
+          actual: Number.isFinite(actual) && actual > 0
+            ? actual
+            : (Number.isFinite(Number(queryData?.actual)) && Number(queryData.actual) > 0 ? Number(queryData.actual) : 0),
           estimates: result?.estimates || {},
           xbound: result?.xbound || {}
         };

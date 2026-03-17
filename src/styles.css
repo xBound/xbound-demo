@@ -6,6 +6,8 @@
   --line: #d8dfef;
   --accent: #1461ff;
   --accent-2: #09b48b;
+  --font-ui: "Palatino Linotype", Palatino, "URW Palladio L", "Book Antiqua", serif;
+  --font-mono: "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 }
 
 * {
@@ -14,7 +16,7 @@
 
 body {
   margin: 0;
-  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  font-family: var(--font-ui);
   background: radial-gradient(circle at top right, #dbe8ff, transparent 45%), var(--bg);
   color: var(--ink);
   overflow-x: hidden;
@@ -122,7 +124,7 @@ body {
   border: 0;
   border-radius: 0;
   padding: 12px;
-  font-family: "IBM Plex Mono", "Menlo", monospace;
+  font-family: var(--font-mono);
   font-size: 0.9rem;
   line-height: 1.45;
   white-space: pre;
@@ -131,7 +133,7 @@ body {
 
 .CodeMirror {
   height: 230px;
-  font-family: "IBM Plex Mono", "Menlo", monospace;
+  font-family: var(--font-mono);
   font-size: 0.9rem;
   line-height: 1.45;
   background: #ffffff;
@@ -185,16 +187,25 @@ body {
   background: #fbfcff;
 }
 
+.xbound-params code {
+  font-family: inherit;   /* removes weird monospace mismatch */
+  background: none;
+  padding: 0;
+}
+
 .xbound-params h3 {
   margin: 0 0 4px;
   font-size: 0.86rem;
   color: #2a3151;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
-.xbound-params-note {
-  margin: 0 0 2px;
-  font-size: 0.8rem;
-  color: #6f7894;
+.xbound-title-icon {
+  width: 17px;
+  height: 17px;
+  object-fit: contain;
 }
 
 .xbound-params input {
@@ -214,6 +225,12 @@ select {
   border-radius: 9px;
   padding: 0 10px;
   background: #fff;
+  font-family: var(--font-ui);
+  color: var(--ink);
+}
+
+option {
+  font-family: var(--font-ui);
 }
 
 .toggle-row {

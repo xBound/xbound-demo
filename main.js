@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
+const fsSync = require('fs');
 const fs = require('fs/promises');
 
 const ESTIMATION_SUFFIX = path.join('LpBound', 'benchmarks', 'est');
@@ -415,23 +416,80 @@ async function readWorkloadQueries(benchmarkName) {
   };
 }
 
-async function estimateCustomQuery(benchmarkName, sql) {
+async function estimateCustomQuery(benchmarkName, sql, xboundParams = null, queryTag = null) {
   const benchmark = canonicalBenchmark(benchmarkName);
   const scriptPath = path.join(__dirname, 'scripts', 'custom_query_estimator.py');
   const robustRoot = process.env.XBOUND_ROBUST_ROOT
     ? path.resolve(process.env.XBOUND_ROBUST_ROOT)
     : path.resolve(__dirname, '..', 'robust_memory_estimation');
-  const pythonBin = process.env.XBOUND_PYTHON || 'python3';
+  const venvPython = process.env.VIRTUAL_ENV
+    ? path.join(process.env.VIRTUAL_ENV, 'bin', 'python')
+    : null;
+  const localVenvPython = path.join(__dirname, '.venv', 'bin', 'python');
+  const pythonBin = process.env.XBOUND_PYTHON
+    || (venvPython && fsSync.existsSync(venvPython) ? venvPython : null)
+    || (fsSync.existsSync(localVenvPython) ? localVenvPython : null);
+  if (!pythonBin) {
+    return {
+      benchmark,
+      sql,
+      actual: null,
+      estimates: {},
+      xbound: {},
+      errors: {
+        estimator: 'No allowed Python env found. Activate your demo env (VIRTUAL_ENV) or set XBOUND_PYTHON.'
+      },
+      debug: {}
+    };
+  }
+  console.error('[estimate-custom-query][python]', pythonBin);
   try {
     const { stdout, stderr } = await execFileAsync(
       pythonBin,
-      [scriptPath, '--benchmark', benchmark, '--sql', sql, '--robust-root', robustRoot],
+      [
+        scriptPath,
+        '--benchmark', benchmark,
+        '--sql', sql,
+        '--query-tag', String(queryTag || ''),
+        '--robust-root', robustRoot,
+        '--parts', String(Number(xboundParams?.parts) || 16),
+        '--l0-theta', String(Number(xboundParams?.l0Theta) || 8),
+        '--hh-theta', String(Number(xboundParams?.hhTheta) || 12)
+      ],
       { maxBuffer: 1024 * 1024 * 4 }
     );
+    if (stdout && stdout.trim()) {
+      console.error('[estimate-custom-query][raw-stdout]\n' + stdout.trim());
+    }
     if (stderr && stderr.trim()) {
       console.error('[estimate-custom-query][stderr]', stderr.trim());
     }
-    const parsed = JSON.parse(stdout);
+    let parsed = null;
+    const raw = String(stdout || '').trim();
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      // xBound/run.py can emit plain logs to stdout; try last JSON-looking line.
+      const lines = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).reverse();
+      const candidate = lines.find((line) => line.startsWith('{') && line.endsWith('}'));
+      if (candidate) {
+        parsed = JSON.parse(candidate);
+      } else {
+        throw new Error('No JSON payload found in estimator stdout');
+      }
+    }
+    if (parsed?.debug?.xbound_runpy_workload_dump) {
+      console.error('[estimate-custom-query][xbound-runpy-workload]', parsed.debug.xbound_runpy_workload_dump);
+    }
+    if (parsed?.debug?.xbound_runpy_stdout) {
+      console.error('[estimate-custom-query][xbound-runpy-stdout]\n' + parsed.debug.xbound_runpy_stdout);
+    }
+    if (parsed?.debug?.xbound_runpy_stderr) {
+      console.error('[estimate-custom-query][xbound-runpy-stderr]\n' + parsed.debug.xbound_runpy_stderr);
+    }
+    if (parsed?.errors?.xbound) {
+      console.error('[estimate-custom-query][xbound-runpy-error]', parsed.errors.xbound);
+    }
     if (parsed?.errors && Object.keys(parsed.errors).length) {
       console.error('[estimate-custom-query][system-errors]', parsed.errors);
     }
@@ -443,7 +501,20 @@ async function estimateCustomQuery(benchmarkName, sql) {
       stdout: error?.stdout,
       stderr: error?.stderr
     });
-    throw error;
+    return {
+      benchmark,
+      sql,
+      actual: null,
+      estimates: {},
+      xbound: {},
+      errors: {
+        estimator: error?.message || 'unknown estimator failure'
+      },
+      debug: {
+        raw_stdout: error?.stdout || null,
+        raw_stderr: error?.stderr || null
+      }
+    };
   }
 }
 
@@ -476,8 +547,8 @@ app.whenReady().then(() => {
   ipcMain.handle('xbound:load-workload-queries', async (_event, benchmark) => {
     return readWorkloadQueries(benchmark);
   });
-  ipcMain.handle('xbound:estimate-custom-query', async (_event, benchmark, sql) => {
-    return estimateCustomQuery(benchmark, sql);
+  ipcMain.handle('xbound:estimate-custom-query', async (_event, benchmark, sql, xboundParams, queryTag) => {
+    return estimateCustomQuery(benchmark, sql, xboundParams, queryTag);
   });
 
   createWindow();

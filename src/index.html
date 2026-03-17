@@ -23,7 +23,6 @@
             <button id="leaderboardBtn" class="square-btn">Board</button>
           </div>
           <div class="sql-content">
-            <label for="sqlInput">SQL Query</label>
             <div class="sql-editor-wrap">
               <textarea id="sqlInput" spellcheck="false"></textarea>
             </div>
@@ -34,7 +33,7 @@
         </section>
 
         <section class="controls-panel card">
-          <h2>Experiment Setup</h2>
+          <h2>Queries</h2>
           <label for="benchmarkSelect">Benchmark</label>
           <select id="benchmarkSelect"></select>
 
@@ -49,15 +48,17 @@
 
         <section class="xbound-panel card">
           <div id="xboundParams" class="xbound-params">
-            <h3>xBound Params</h3>
-            <p id="xboundParamsNote" class="xbound-params-note"></p>
-            <label for="xboundParts">#parts</label>
+            <h3>
+              <img src="../icons/xbound-icon.png" alt="xBound" class="xbound-title-icon" />
+              xBound: Parameters
+            </h3>
+            <label for="xboundParts">Number of partitions</label>
             <input id="xboundParts" type="number" min="1" step="1" value="16" />
 
-            <label for="xboundL0Theta"><code>l_0</code> theta</label>
+            <label for="xboundL0Theta"><code>ThetaSketch</code> precision of <code>l_0</code> stats</label>
             <input id="xboundL0Theta" type="number" min="0" step="1" value="8" />
 
-            <label for="xboundHhTheta">heavy theta</label>
+            <label for="xboundHhTheta"><code>ThetaSketch</code> precision of heavy partition stats</label>
             <input id="xboundHhTheta" type="number" min="0" step="1" value="12" />
           </div>
         </section>
