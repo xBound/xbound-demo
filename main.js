@@ -152,7 +152,19 @@ function loadFromJsonlLines(lines) {
   return queryMap;
 }
 
-async function readBenchmarkEstimates(benchmarkName) {
+function xboundPreferredSuffix(alias, xboundParams) {
+  if (alias === 'so_full_ceb' && xboundParams && typeof xboundParams === 'object') {
+    const parts = Number(xboundParams.parts);
+    const l0Theta = Number(xboundParams.l0Theta);
+    const hhTheta = Number(xboundParams.hhTheta);
+    if (Number.isFinite(parts) && Number.isFinite(l0Theta) && Number.isFinite(hhTheta)) {
+      return `_host=hausberg_parts=${Math.trunc(parts)}_ns=1_ub=0_l0-theta=${Math.trunc(l0Theta)}_hh-theta=${Math.trunc(hhTheta)}_mcv=1024.jsonl`;
+    }
+  }
+  return XBOUND_FILE_PREFERENCE[alias];
+}
+
+async function readBenchmarkEstimates(benchmarkName, xboundParams = null) {
   const benchmark = String(benchmarkName || '').trim().toLowerCase();
   if (!benchmark) return { ok: false, error: 'invalid benchmark', queries: {} };
 
@@ -272,7 +284,7 @@ async function readBenchmarkEstimates(benchmarkName) {
           .filter((name) => name.startsWith('xbound::') && name.includes(`::${alias}-queries`) && name.endsWith('.jsonl') && isPreferredEstimateFile(alias, name))
           .sort();
         if (xboundFiles.length) {
-          const preferredSuffix = XBOUND_FILE_PREFERENCE[alias];
+          const preferredSuffix = xboundPreferredSuffix(alias, xboundParams);
           const chosen = (preferredSuffix && xboundFiles.find((name) => name.endsWith(preferredSuffix))) || xboundFiles[0];
           const content = await fs.readFile(path.join(dirPath, chosen), 'utf8');
           const lines = content.split(/\r?\n/);
@@ -458,8 +470,8 @@ app.whenReady().then(() => {
     app.dock.setIcon(APP_ICON_PATH);
   }
 
-  ipcMain.handle('xbound:load-precomputed-estimates', async (_event, benchmark) => {
-    return readBenchmarkEstimates(benchmark);
+  ipcMain.handle('xbound:load-precomputed-estimates', async (_event, benchmark, xboundParams) => {
+    return readBenchmarkEstimates(benchmark, xboundParams);
   });
   ipcMain.handle('xbound:load-workload-queries', async (_event, benchmark) => {
     return readWorkloadQueries(benchmark);

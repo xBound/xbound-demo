@@ -47,6 +47,21 @@
           </div>
         </section>
 
+        <section class="xbound-panel card">
+          <div id="xboundParams" class="xbound-params">
+            <h3>xBound Params</h3>
+            <p id="xboundParamsNote" class="xbound-params-note"></p>
+            <label for="xboundParts">#parts</label>
+            <input id="xboundParts" type="number" min="1" step="1" value="16" />
+
+            <label for="xboundL0Theta"><code>l_0</code> theta</label>
+            <input id="xboundL0Theta" type="number" min="0" step="1" value="8" />
+
+            <label for="xboundHhTheta">heavy theta</label>
+            <input id="xboundHhTheta" type="number" min="0" step="1" value="12" />
+          </div>
+        </section>
+
         <section class="chart-panel card" id="runPanel">
           <h2>Q-Error vs Actual (y = 1 Baseline)</h2>
           <canvas id="chartCanvas"></canvas>

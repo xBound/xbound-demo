@@ -102,6 +102,11 @@ const els = {
   querySelect: document.getElementById('querySelect'),
   sqlInput: document.getElementById('sqlInput'),
   statusText: document.getElementById('statusText'),
+  xboundParams: document.getElementById('xboundParams'),
+  xboundParamsNote: document.getElementById('xboundParamsNote'),
+  xboundParts: document.getElementById('xboundParts'),
+  xboundL0Theta: document.getElementById('xboundL0Theta'),
+  xboundHhTheta: document.getElementById('xboundHhTheta'),
   planSystemSelect: document.getElementById('planSystemSelect'),
   planControls: document.getElementById('planControls'),
   runBtn: document.getElementById('runBtn'),
@@ -600,9 +605,36 @@ function canonicalQueryName(benchmark, queryName) {
   return q;
 }
 
+function xboundParamOptionsForBenchmark(benchmark) {
+  if (String(benchmark).toLowerCase() === 'so-ceb') {
+    return {
+      parts: Number(els.xboundParts?.value || 16),
+      l0Theta: Number(els.xboundL0Theta?.value || 8),
+      hhTheta: Number(els.xboundHhTheta?.value || 12)
+    };
+  }
+  return null;
+}
+
+function xboundParamCacheKey(benchmark) {
+  const params = xboundParamOptionsForBenchmark(benchmark);
+  return `${benchmark}|${JSON.stringify(params || {})}`;
+}
+
+function updateXboundParamsState() {
+  if (!els.xboundParams) return;
+  const benchmark = els.benchmarkSelect.value;
+  if (els.xboundParamsNote) {
+    els.xboundParamsNote.textContent = benchmark === 'SO-CEB'
+      ? 'Using these values for SO-CEB xBound file selection.'
+      : 'Shown for all benchmarks; current xBound file matching is available for SO-CEB.';
+  }
+}
+
 async function ensureBenchmarkLoaded(benchmark) {
-  if (loadedBenchmarks.has(benchmark)) return;
-  loadedBenchmarks.add(benchmark);
+  const cacheKey = xboundParamCacheKey(benchmark);
+  if (loadedBenchmarks.has(cacheKey)) return;
+  loadedBenchmarks.add(cacheKey);
 
   const estimateLoader = window.xbound?.loadPrecomputedEstimates;
   const workloadLoader = window.xbound?.loadWorkloadQueries;
@@ -627,7 +659,7 @@ async function ensureBenchmarkLoaded(benchmark) {
     }
 
     if (typeof estimateLoader === 'function') {
-      const estimateResult = await estimateLoader(benchmark);
+      const estimateResult = await estimateLoader(benchmark, xboundParamOptionsForBenchmark(benchmark));
       if (estimateResult?.ok && estimateResult.queries && typeof estimateResult.queries === 'object') {
         Object.entries(estimateResult.queries).forEach(([queryName, queryData]) => {
           const canonicalName = canonicalQueryName(benchmark, queryName);
@@ -655,6 +687,7 @@ async function ensureBenchmarkLoaded(benchmark) {
 function bindEvents() {
   els.benchmarkSelect.addEventListener('change', async () => {
     customQueryData = null;
+    updateXboundParamsState();
     await ensureBenchmarkLoaded(els.benchmarkSelect.value);
     updateQuerySelector();
     const entries = activeEntries();
@@ -668,6 +701,19 @@ function bindEvents() {
     const entries = activeEntries();
     if (currentMode === 'run') renderQErrorBarPlot(entries);
     if (currentMode === 'leaderboard') renderLeaderboard(entries);
+  });
+
+  [els.xboundParts, els.xboundL0Theta, els.xboundHhTheta].forEach((el) => {
+    if (!el) return;
+    el.addEventListener('change', async () => {
+      if (els.benchmarkSelect.value !== 'SO-CEB') return;
+      customQueryData = null;
+      await ensureBenchmarkLoaded('SO-CEB');
+      updateQuerySelector();
+      const entries = activeEntries();
+      if (currentMode === 'run') renderQErrorBarPlot(entries);
+      if (currentMode === 'leaderboard') renderLeaderboard(entries);
+    });
   });
 
   els.planSystemSelect.addEventListener('change', () => {
@@ -757,6 +803,7 @@ async function init() {
   await ensureBenchmarkLoaded('SO-CEB');
   await ensureBenchmarkLoaded('STATS-CEB');
   populateSelectors();
+  updateXboundParamsState();
   bindEvents();
   setMode('run');
 }
