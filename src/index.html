@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>xBound VLDB26 Demo</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="top-header">
+        <h1>xBound Demo Dashboard</h1>
+        <span id="appName"></span>
+      </header>
+
+      <main class="layout-grid">
+        <section class="sql-panel card">
+          <div class="left-actions">
+            <button id="runBtn" class="square-btn active">Run</button>
+            <button id="planViewBtn" class="square-btn">Plan</button>
+            <button id="leaderboardBtn" class="square-btn">Board</button>
+          </div>
+          <div class="sql-content">
+            <label for="sqlInput">SQL Query</label>
+            <textarea id="sqlInput" spellcheck="false"></textarea>
+            <div class="inline-meta">
+              <span id="statusText">Ready</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="controls-panel card">
+          <h2>Experiment Setup</h2>
+          <label for="benchmarkSelect">Benchmark</label>
+          <select id="benchmarkSelect"></select>
+
+          <label for="querySelect">Query</label>
+          <select id="querySelect"></select>
+
+          <label class="toggle-row" for="xboundToggle">
+            <input type="checkbox" id="xboundToggle" />
+            Show xBound-ed system
+          </label>
+
+          <div id="planControls" class="plan-controls hidden">
+            <label for="planSystemSelect">Plan system</label>
+            <select id="planSystemSelect"></select>
+          </div>
+        </section>
+
+        <section class="chart-panel card" id="runPanel">
+          <h2>Q-Error vs Actual (y = 1 Baseline)</h2>
+          <canvas id="chartCanvas" width="1180" height="340"></canvas>
+        </section>
+
+        <section class="chart-panel card hidden" id="planPanel">
+          <h2>Query Plan Tree</h2>
+          <div id="planTree" class="plan-tree"></div>
+        </section>
+
+        <section class="chart-panel card hidden" id="leaderboardPanel">
+          <h2>Leaderboard (Closest Q-Error to 1)</h2>
+          <ol id="leaderboardList" class="leaderboard-list"></ol>
+        </section>
+      </main>
+    </div>
+
+    <script src="./renderer.js"></script>
+  </body>
+</html>
