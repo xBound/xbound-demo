@@ -273,7 +273,9 @@ function renderQErrorBarPlot(entries) {
     return margin.top + height - ratio * height;
   };
 
-  const xStep = width / Math.max(1, entries.length);
+  const xStep = width / Math.max(1, SYSTEMS.length);
+  const barWidth = Math.min(42, xStep * 0.58);
+  const entryBySystem = new Map(entries.map((entry) => [systemKeyForEntry(entry.system), entry]));
 
   ctx.clearRect(0, 0, cssWidth, cssHeight);
   ctx.fillStyle = '#ffffff';
@@ -359,9 +361,10 @@ function renderQErrorBarPlot(entries) {
     }
   }
 
-  entries.forEach((entry, idx) => {
+  SYSTEMS.forEach((system, idx) => {
+    const entry = entryBySystem.get(system);
+    if (!entry) return;
     const centerX = margin.left + xStep * idx + xStep / 2;
-    const barWidth = Math.min(42, xStep * 0.58);
     const barTop = y(entry.signedQError || entry.qError);
     const barHeight = Math.abs(barTop - baselineY);
     const isXBound = entry.system.includes(XBOUND_SUFFIX);
