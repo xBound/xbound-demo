@@ -1,99 +1,10 @@
 const SYSTEMS = ['duckdb', 'postgres', 'fabric dw'];
 const XBOUND_SUFFIX = ' xBound-ed';
+const BENCHMARKS = ['JOBlight', 'SO-CEB', 'STATS-CEB'];
 
-const MOCK_QUERIES = {
-  'TPC-H': {
-    Q1: {
-      sql: 'select l_returnflag, l_linestatus, sum(l_quantity) as sum_qty from lineitem group by 1,2;',
-      actual: 1475320,
-      estimates: {
-        duckdb: 1600000,
-        postgres: 1254000,
-        'fabric dw': 1805000
-      },
-      xbound: {
-        duckdb: 1503000,
-        postgres: 1438000,
-        'fabric dw': 1491000
-      }
-    },
-    Q3: {
-      sql: 'select l_orderkey, sum(l_extendedprice * (1 - l_discount)) as revenue from lineitem group by 1;',
-      actual: 603110,
-      estimates: {
-        duckdb: 522000,
-        postgres: 790000,
-        'fabric dw': 580000
-      },
-      xbound: {
-        duckdb: 590000,
-        postgres: 640000,
-        'fabric dw': 610500
-      }
-    },
-    Q6: {
-      sql: 'select sum(l_extendedprice * l_discount) as revenue from lineitem where l_discount between 0.05 and 0.07;',
-      actual: 92450,
-      estimates: {
-        duckdb: 130000,
-        postgres: 77000,
-        'fabric dw': 102500
-      },
-      xbound: {
-        duckdb: 98100,
-        postgres: 93000,
-        'fabric dw': 91500
-      }
-    }
-  },
-  JOB: {
-    Q2: {
-      sql: 'select t.title, mi.info from title t join movie_info mi on t.id = mi.movie_id where t.production_year > 2015;',
-      actual: 315220,
-      estimates: {
-        duckdb: 402100,
-        postgres: 280000,
-        'fabric dw': 468000
-      },
-      xbound: {
-        duckdb: 331000,
-        postgres: 304000,
-        'fabric dw': 322200
-      }
-    },
-    Q9: {
-      sql: 'select count(*) from cast_info ci join name n on n.id = ci.person_id where n.gender = "m";',
-      actual: 1600450,
-      estimates: {
-        duckdb: 1200000,
-        postgres: 2450000,
-        'fabric dw': 1770000
-      },
-      xbound: {
-        duckdb: 1520000,
-        postgres: 1720000,
-        'fabric dw': 1662000
-      }
-    },
-    Q17: {
-      sql: 'select t.title from title t join movie_keyword mk on t.id = mk.movie_id where mk.keyword_id in (12,31,77);',
-      actual: 81030,
-      estimates: {
-        duckdb: 130400,
-        postgres: 62000,
-        'fabric dw': 72000
-      },
-      xbound: {
-        duckdb: 86000,
-        postgres: 79000,
-        'fabric dw': 80400
-      }
-    }
-  }
-};
-let queryStore = JSON.parse(JSON.stringify(MOCK_QUERIES));
-queryStore.JOBlight = {};
+let queryStore = Object.fromEntries(BENCHMARKS.map((name) => [name, {}]));
 const loadedBenchmarks = new Set();
+let customQueryData = null;
 
 const MOCK_PLAN_JSON = {
   duckdb: {
@@ -189,6 +100,7 @@ let currentMode = 'run';
 let sqlEditor = null;
 
 function getCurrentQueryData() {
+  if (customQueryData) return customQueryData;
   const benchmark = els.benchmarkSelect.value;
   const queryName = els.querySelect.value;
   return queryStore[benchmark]?.[queryName];
@@ -207,7 +119,10 @@ function buildEstimateEntries(includeXBound) {
         system,
         estimate,
         actual,
-        qError: estimate / actual
+        qError: Math.max(estimate / actual, actual / estimate),
+        signedQError: estimate >= actual
+          ? Math.max(estimate / actual, actual / estimate)
+          : -Math.max(estimate / actual, actual / estimate)
       };
     })
     .filter(Boolean);
@@ -221,7 +136,10 @@ function buildEstimateEntries(includeXBound) {
         system: `${system}${XBOUND_SUFFIX}`,
         estimate,
         actual,
-        qError: estimate / actual
+        qError: Math.max(estimate / actual, actual / estimate),
+        signedQError: estimate >= actual
+          ? Math.max(estimate / actual, actual / estimate)
+          : -Math.max(estimate / actual, actual / estimate)
       });
     });
   }
@@ -245,10 +163,9 @@ function renderQErrorBarPlot(entries) {
   const width = cssWidth - margin.left - margin.right;
   const height = cssHeight - margin.top - margin.bottom;
   const baselineY = margin.top + height / 2;
-
-  const maxDeviation = Math.max(0.5, ...entries.map((e) => Math.abs(e.qError - 1)));
-  const domainMin = 1 - maxDeviation * 1.15;
-  const domainMax = 1 + maxDeviation * 1.15;
+  const maxAbsQ = Math.max(1.2, ...entries.map((e) => Math.abs(e.signedQError || e.qError || 1)));
+  const domainMin = -maxAbsQ * 1.1;
+  const domainMax = maxAbsQ * 1.1;
 
   const y = (value) => {
     const ratio = (value - domainMin) / (domainMax - domainMin);
@@ -261,7 +178,7 @@ function renderQErrorBarPlot(entries) {
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, cssWidth, cssHeight);
 
-  const ticks = [domainMin, (domainMin + 1) / 2, 1, (domainMax + 1) / 2, domainMax];
+  const ticks = [domainMin, domainMin / 2, 0, domainMax / 2, domainMax];
 
   ctx.strokeStyle = '#cdd6ea';
   ctx.lineWidth = 1;
@@ -274,7 +191,8 @@ function renderQErrorBarPlot(entries) {
 
     ctx.fillStyle = '#6b718c';
     ctx.font = '12px IBM Plex Sans, sans-serif';
-    ctx.fillText(`${tick.toFixed(2)}x`, 8, yy + 4);
+    if (Math.abs(tick) < 1e-9) ctx.fillText('1.00x', 8, yy + 4);
+    else ctx.fillText(`${Math.abs(tick).toFixed(2)}x`, 8, yy + 4);
   });
 
   ctx.strokeStyle = '#1e2b54';
@@ -286,12 +204,16 @@ function renderQErrorBarPlot(entries) {
 
   ctx.fillStyle = '#1e2b54';
   ctx.font = '12px IBM Plex Sans, sans-serif';
-  ctx.fillText('y = 1 (actual)', margin.left + 8, baselineY - 8);
+  const actualBaseline = entries[0]?.actual;
+  const baselineLabel = Number.isFinite(actualBaseline)
+    ? `actual: ${actualBaseline.toLocaleString()}`
+    : 'actual';
+  ctx.fillText(baselineLabel, margin.left + 8, baselineY - 8);
 
   entries.forEach((entry, idx) => {
     const centerX = margin.left + xStep * idx + xStep / 2;
     const barWidth = Math.min(42, xStep * 0.58);
-    const barTop = y(entry.qError);
+    const barTop = y(entry.signedQError || entry.qError);
     const barHeight = Math.abs(barTop - baselineY);
     const isXBound = entry.system.includes(XBOUND_SUFFIX);
     const accent = isXBound ? '#09b48b' : '#1461ff';
@@ -308,9 +230,12 @@ function renderQErrorBarPlot(entries) {
     ctx.fillStyle = '#1f2a4d';
     ctx.font = '11px IBM Plex Sans, sans-serif';
     const label = entry.system.length > 14 ? `${entry.system.slice(0, 13)}...` : entry.system;
-    const qLabelY = entry.qError >= 1 ? barTop - 6 : barTop + 15;
+    const qLabelY = (entry.signedQError || entry.qError) >= 0 ? barTop - 6 : barTop + 15;
+    const estimateLabel = Number.isFinite(entry.estimate)
+      ? entry.estimate.toLocaleString()
+      : String(entry.estimate);
     ctx.fillText(label, centerX - barWidth / 2 - 6, cssHeight - 36);
-    ctx.fillText(`${entry.qError.toFixed(2)}x`, centerX - barWidth / 2 - 2, qLabelY);
+    ctx.fillText(estimateLabel, centerX - barWidth / 2 - 2, qLabelY);
   });
 }
 
@@ -364,6 +289,11 @@ function activeEntries() {
   return buildEstimateEntries(els.xboundToggle.checked);
 }
 
+function getSqlText() {
+  if (sqlEditor) return sqlEditor.getValue();
+  return els.sqlInput.value;
+}
+
 function setMode(mode) {
   currentMode = mode;
   els.runBtn.classList.toggle('active', mode === 'run');
@@ -383,7 +313,7 @@ function setMode(mode) {
 }
 
 function populateSelectors() {
-  Object.keys(queryStore).forEach((benchmark) => {
+  BENCHMARKS.forEach((benchmark) => {
     const option = document.createElement('option');
     option.value = benchmark;
     option.textContent = benchmark;
@@ -411,6 +341,13 @@ function updateQuerySelector() {
     option.textContent = q;
     els.querySelect.appendChild(option);
   });
+
+  if (queries.length === 0) {
+    const option = document.createElement('option');
+    option.value = '';
+    option.textContent = 'No precomputed queries loaded';
+    els.querySelect.appendChild(option);
+  }
 
   syncSqlInput();
 }
@@ -440,7 +377,7 @@ function canonicalQueryName(benchmark, queryName) {
   const b = String(benchmark || '').toLowerCase();
   const q = String(queryName || '').trim();
   if (!q) return q;
-  if (b === 'joblight' || b === 'job') {
+  if (b === 'joblight' || b === 'job' || b === 'so-ceb' || b === 'so_full_ceb' || b === 'stats-ceb' || b === 'stats_ceb') {
     if (/^q\d+$/i.test(q)) return `Q${q.replace(/^q/i, '')}`;
     if (/^\d+$/.test(q)) return `Q${q}`;
   }
@@ -501,6 +438,7 @@ async function ensureBenchmarkLoaded(benchmark) {
 
 function bindEvents() {
   els.benchmarkSelect.addEventListener('change', async () => {
+    customQueryData = null;
     await ensureBenchmarkLoaded(els.benchmarkSelect.value);
     updateQuerySelector();
     const entries = activeEntries();
@@ -509,6 +447,7 @@ function bindEvents() {
   });
 
   els.querySelect.addEventListener('change', () => {
+    customQueryData = null;
     syncSqlInput();
     const entries = activeEntries();
     if (currentMode === 'run') renderQErrorBarPlot(entries);
@@ -525,8 +464,45 @@ function bindEvents() {
     if (currentMode === 'plan') renderPlanTree(els.planSystemSelect.value);
   });
 
-  els.runBtn.addEventListener('click', () => {
+  els.runBtn.addEventListener('click', async () => {
     setMode('run');
+    const sql = getSqlText().trim();
+    const queryData = queryStore[els.benchmarkSelect.value]?.[els.querySelect.value];
+    const isCustom = !queryData || sql !== String(queryData.sql || '').trim();
+
+    if (isCustom && sql && window.xbound?.estimateCustomQuery) {
+      els.statusText.textContent = 'Estimating custom query...';
+      try {
+        const result = await window.xbound.estimateCustomQuery(els.benchmarkSelect.value, sql);
+        if (result?.errors && Object.keys(result.errors).length) {
+          console.error('[custom-query-estimation][errors]', result.errors);
+        }
+        const actual = Number(result?.actual);
+        customQueryData = {
+          sql,
+          actual: Number.isFinite(actual) && actual > 0 ? actual : 1,
+          estimates: result?.estimates || {},
+          xbound: result?.xbound || {}
+        };
+        renderQErrorBarPlot(activeEntries());
+        const numEntries = activeEntries().length;
+        if (numEntries === 0) {
+          els.statusText.textContent = 'No estimates produced. Check terminal logs for details.';
+        } else if (result?.errors && Object.keys(result.errors).length) {
+          els.statusText.textContent = 'Partial estimates produced. Check terminal logs for failures.';
+        } else {
+          els.statusText.textContent = 'Custom query estimated (duckdb/postgres/xbound)';
+        }
+      } catch (err) {
+        console.error('[custom-query-estimation][failed]', err);
+        customQueryData = null;
+        renderQErrorBarPlot(activeEntries());
+        els.statusText.textContent = 'Failed to estimate custom query. Check terminal logs.';
+      }
+      return;
+    }
+
+    customQueryData = null;
     renderQErrorBarPlot(activeEntries());
     els.statusText.textContent = 'Q-error bars refreshed';
   });
@@ -560,9 +536,9 @@ async function init() {
       viewportMargin: Infinity
     });
   }
-  await ensureBenchmarkLoaded('JOB');
   await ensureBenchmarkLoaded('JOBlight');
-  await ensureBenchmarkLoaded('TPC-H');
+  await ensureBenchmarkLoaded('SO-CEB');
+  await ensureBenchmarkLoaded('STATS-CEB');
   populateSelectors();
   bindEvents();
   setMode('run');

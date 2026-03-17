@@ -4,6 +4,22 @@ const fs = require('fs/promises');
 
 const ESTIMATION_SUFFIX = path.join('LpBound', 'benchmarks', 'est');
 const WORKLOAD_SUFFIX = path.join('LpBound', 'benchmarks', 'workloads');
+const { execFile } = require('child_process');
+const { promisify } = require('util');
+const execFileAsync = promisify(execFile);
+
+const BENCHMARK_CANONICAL_MAP = {
+  joblight: 'joblight',
+  job: 'joblight',
+  'job-light': 'joblight',
+  'so-ceb': 'so_full_ceb',
+  so_ceb: 'so_full_ceb',
+  sofullceb: 'so_full_ceb',
+  so_full_ceb: 'so_full_ceb',
+  'stats-ceb': 'stats_ceb',
+  stats_ceb: 'stats_ceb',
+  statsceb: 'stats_ceb'
+};
 
 function estimationRoots() {
   const roots = [];
@@ -23,14 +39,19 @@ function workloadRoots() {
 
 function benchmarkAliases(benchmarkName) {
   const benchmark = String(benchmarkName || '').trim().toLowerCase();
+  const canonical = BENCHMARK_CANONICAL_MAP[benchmark] || BENCHMARK_CANONICAL_MAP[benchmark.replace(/[^a-z0-9_]+/g, '')] || benchmark;
   return Array.from(new Set([
-    benchmark,
-    benchmark.replace(/[^a-z0-9]+/g, ''),
-    benchmark === 'job' ? 'joblight' : null,
-    benchmark === 'joblight' ? 'job' : null,
-    benchmark === 'tpc-h' ? 'tpch' : null,
-    benchmark === 'tpch' ? 'tpc-h' : null
+    canonical,
+    canonical.replace(/[^a-z0-9]+/g, ''),
+    canonical === 'joblight' ? 'job' : null,
+    canonical === 'so_full_ceb' ? 'so-ceb' : null,
+    canonical === 'stats_ceb' ? 'stats-ceb' : null
   ].filter(Boolean)));
+}
+
+function canonicalBenchmark(benchmarkName) {
+  const benchmark = String(benchmarkName || '').trim().toLowerCase();
+  return BENCHMARK_CANONICAL_MAP[benchmark] || BENCHMARK_CANONICAL_MAP[benchmark.replace(/[^a-z0-9_]+/g, '')] || benchmark;
 }
 
 function systemKey(systemName) {
@@ -139,6 +160,28 @@ async function readBenchmarkEstimates(benchmarkName) {
     }
   }
 
+  for (const root of estimationRoots()) {
+    for (const alias of aliases) {
+      const dirPath = path.join(root, alias);
+      try {
+        const files = await fs.readdir(dirPath);
+        const systemFile = files.find((name) => name.startsWith('system::') && name.includes(`::${alias}-queries`) && name.endsWith('.jsonl'));
+        if (!systemFile) continue;
+        const filePath = path.join(dirPath, systemFile);
+        searchedPaths.push(filePath);
+        const content = await fs.readFile(filePath, 'utf8');
+        const lines = content.split(/\r?\n/);
+        return {
+          ok: true,
+          sourcePath: filePath,
+          queries: loadFromJsonlLines(lines)
+        };
+      } catch {
+        // Try next candidate.
+      }
+    }
+  }
+
   // Fallback: per-system estimate files, e.g. duckdb::..., postgres::..., dw::..., xbound::...
   for (const root of estimationRoots()) {
     for (const alias of aliases) {
@@ -160,7 +203,7 @@ async function readBenchmarkEstimates(benchmarkName) {
 
         for (const file of files) {
           const fullPath = path.join(dirPath, file);
-          if (!file.endsWith(`::${alias}-queries.jsonl`) && !file.startsWith(`xbound::${alias}-queries`)) continue;
+          if (!(file.includes(`::${alias}-queries`) && file.endsWith('.jsonl'))) continue;
           const content = await fs.readFile(fullPath, 'utf8');
           const lines = content.split(/\r?\n/);
 
@@ -254,6 +297,38 @@ async function readWorkloadQueries(benchmarkName) {
       } catch {
         // Try next candidate.
       }
+
+      try {
+        const dirPath = path.join(root, alias);
+        const files = await fs.readdir(dirPath);
+        const workloadFile = files.find((name) => name.startsWith(`${alias}-queries`) && name.endsWith('.jsonl'));
+        if (!workloadFile) continue;
+        const fullPath = path.join(dirPath, workloadFile);
+        searchedPaths.push(fullPath);
+        const content = await fs.readFile(fullPath, 'utf8');
+        const queries = {};
+        content.split(/\r?\n/).forEach((rawLine) => {
+          const line = rawLine.trim();
+          if (!line) return;
+          let obj;
+          try {
+            obj = JSON.parse(line);
+          } catch {
+            return;
+          }
+          const key = queryKey(obj);
+          if (!key) return;
+          queries[key] ||= {};
+          if (typeof obj.sql === 'string') queries[key].sql = obj.sql;
+        });
+        return {
+          ok: true,
+          sourcePath: fullPath,
+          queries
+        };
+      } catch {
+        // Try next candidate.
+      }
     }
   }
 
@@ -263,6 +338,38 @@ async function readWorkloadQueries(benchmarkName) {
     searchedPaths,
     queries: {}
   };
+}
+
+async function estimateCustomQuery(benchmarkName, sql) {
+  const benchmark = canonicalBenchmark(benchmarkName);
+  const scriptPath = path.join(__dirname, 'scripts', 'custom_query_estimator.py');
+  const robustRoot = process.env.XBOUND_ROBUST_ROOT
+    ? path.resolve(process.env.XBOUND_ROBUST_ROOT)
+    : path.resolve(__dirname, '..', 'robust_memory_estimation');
+  const pythonBin = process.env.XBOUND_PYTHON || 'python3';
+  try {
+    const { stdout, stderr } = await execFileAsync(
+      pythonBin,
+      [scriptPath, '--benchmark', benchmark, '--sql', sql, '--robust-root', robustRoot],
+      { maxBuffer: 1024 * 1024 * 4 }
+    );
+    if (stderr && stderr.trim()) {
+      console.error('[estimate-custom-query][stderr]', stderr.trim());
+    }
+    const parsed = JSON.parse(stdout);
+    if (parsed?.errors && Object.keys(parsed.errors).length) {
+      console.error('[estimate-custom-query][system-errors]', parsed.errors);
+    }
+    return parsed;
+  } catch (error) {
+    console.error('[estimate-custom-query][failed]', {
+      benchmark,
+      message: error?.message,
+      stdout: error?.stdout,
+      stderr: error?.stderr
+    });
+    throw error;
+  }
 }
 
 function createWindow() {
@@ -288,6 +395,9 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('xbound:load-workload-queries', async (_event, benchmark) => {
     return readWorkloadQueries(benchmark);
+  });
+  ipcMain.handle('xbound:estimate-custom-query', async (_event, benchmark, sql) => {
+    return estimateCustomQuery(benchmark, sql);
   });
 
   createWindow();
