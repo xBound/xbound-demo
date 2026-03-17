@@ -19,6 +19,7 @@ const SYSTEM_COLORS = {
   'fabric dw': '#8ae8ff',
   xbound: '#D3D3D3'
 };
+const ESTIMATE_FONT = '15px IBM Plex Sans, sans-serif';
 
 let queryStore = Object.fromEntries(BENCHMARKS.map((name) => [name, {}]));
 const loadedBenchmarks = new Set();
@@ -101,7 +102,6 @@ const els = {
   querySelect: document.getElementById('querySelect'),
   sqlInput: document.getElementById('sqlInput'),
   statusText: document.getElementById('statusText'),
-  xboundToggle: document.getElementById('xboundToggle'),
   planSystemSelect: document.getElementById('planSystemSelect'),
   planControls: document.getElementById('planControls'),
   runBtn: document.getElementById('runBtn'),
@@ -117,6 +117,46 @@ const els = {
 
 let currentMode = 'run';
 let sqlEditor = null;
+
+function normalizeSql(sql) {
+  return String(sql || '')
+    .replace(/\s+/g, ' ')
+    .replace(/\s*;\s*$/g, '')
+    .trim()
+    .toLowerCase();
+}
+
+function formatSql(sql) {
+  const raw = String(sql || '').trim();
+  if (!raw) return raw;
+  return fallbackFormatSql(raw);
+}
+
+function formatCardinality(value) {
+  if (!Number.isFinite(value)) return String(value);
+  const n = Math.ceil(value);
+  if (n >= 1_000_000_000) return `${Math.ceil(n / 1_000_000_000)}B`;
+  if (n >= 1_000_000) return `${Math.ceil(n / 1_000_000)}M`;
+  if (n >= 999_500) return '1M';
+  if (n >= 1_000) return `${Math.ceil(n / 1_000)}K`;
+  return String(n);
+}
+
+function fallbackFormatSql(sql) {
+  const compact = String(sql || '').replace(/\s+/g, ' ').trim();
+  const breakBefore = [
+    'SELECT', 'FROM', 'WHERE', 'GROUP BY', 'ORDER BY', 'HAVING', 'LIMIT',
+    'LEFT JOIN', 'RIGHT JOIN', 'INNER JOIN', 'FULL JOIN', 'JOIN'
+  ];
+  let out = compact;
+  breakBefore.forEach((kw) => {
+    const pattern = new RegExp(`\\s+${kw}\\s+`, 'ig');
+    out = out.replace(pattern, `\n${kw} `);
+  });
+  out = out.replace(/\s*,\s*/g, ',\n  ');
+  out = out.replace(/\nFROM\s+/gi, '\nFROM\n  ');
+  return out;
+}
 
 function getCurrentQueryData() {
   if (customQueryData) return customQueryData;
@@ -146,24 +186,48 @@ function buildEstimateEntries(includeXBound) {
     })
     .filter(Boolean);
 
-  if (includeXBound) {
-    SYSTEMS.forEach((system) => {
-      const estimate = queryData.xbound?.[system];
-      const actual = queryData.actual;
-      if (!Number.isFinite(estimate) || !Number.isFinite(actual) || actual === 0) return;
-      entries.push({
-        system: `${system}${XBOUND_SUFFIX}`,
-        estimate,
-        actual,
-        qError: Math.max(estimate / actual, actual / estimate),
-        signedQError: estimate >= actual
-          ? Math.max(estimate / actual, actual / estimate)
-          : -Math.max(estimate / actual, actual / estimate)
-      });
-    });
-  }
+  // xBound is rendered as an overlay line, not separate bars.
+  if (includeXBound) {}
 
   return entries;
+}
+
+function xboundOverlayEntry() {
+  const queryData = getCurrentQueryData();
+  if (!queryData) return null;
+  const actual = queryData.actual;
+  if (!Number.isFinite(actual) || actual === 0) return null;
+
+  for (const system of SYSTEMS) {
+    const estimate = queryData.xbound?.[system];
+    if (!Number.isFinite(estimate)) continue;
+    if (estimate === -1) {
+      return {
+        system: 'xbound',
+        estimate,
+        actual,
+        unsupported: true
+      };
+    }
+    if (estimate === 0) {
+      return {
+        system: 'xbound',
+        estimate,
+        actual,
+        zeroLowerBound: true
+      };
+    }
+    const q = Math.max(estimate / actual, actual / estimate);
+    return {
+      system: 'xbound',
+      estimate,
+      actual,
+      qError: q,
+      signedQError: estimate >= actual ? q : -q
+    };
+  }
+
+  return null;
 }
 
 function renderQErrorBarPlot(entries) {
@@ -182,7 +246,12 @@ function renderQErrorBarPlot(entries) {
   const width = cssWidth - margin.left - margin.right;
   const height = cssHeight - margin.top - margin.bottom;
   const baselineY = margin.top + height / 2;
-  const maxAbsQ = Math.max(1.2, ...entries.map((e) => Math.abs(e.signedQError || e.qError || 1)));
+  const xboundOverlay = xboundOverlayEntry();
+  const maxAbsQ = Math.max(
+    1.2,
+    ...entries.map((e) => Math.abs(e.signedQError || e.qError || 1)),
+    Math.abs(xboundOverlay?.signedQError || 1)
+  );
   const domainMin = -maxAbsQ * 1.1;
   const domainMax = maxAbsQ * 1.1;
 
@@ -222,13 +291,60 @@ function renderQErrorBarPlot(entries) {
   ctx.stroke();
 
   ctx.fillStyle = '#1e2b54';
-  ctx.font = '12px IBM Plex Sans, sans-serif';
+  ctx.font = ESTIMATE_FONT;
   const actualBaseline = entries[0]?.actual;
   const baselineLabel = Number.isFinite(actualBaseline)
-    ? `actual: ${actualBaseline.toLocaleString()}`
+    ? `actual: ${formatCardinality(actualBaseline)}`
     : 'actual';
   ctx.fillText(baselineLabel, margin.left + 8, baselineY - 8);
-  drawLegend(ctx, cssWidth / 2, 18, entries);
+  drawLegend(ctx, cssWidth / 2, 18);
+
+  if (xboundOverlay) {
+    if (xboundOverlay.unsupported) {
+      ctx.fillStyle = '#a33a3a';
+      ctx.font = '13px IBM Plex Sans, sans-serif';
+      const warningText = '⚠️ Query not supported in xBound';
+      const textWidth = ctx.measureText(warningText).width;
+      ctx.fillText(warningText, cssWidth - margin.right - textWidth - 4, margin.top - 12);
+    } else if (xboundOverlay.zeroLowerBound) {
+      ctx.fillStyle = '#a36a00';
+      ctx.font = '13px IBM Plex Sans, sans-serif';
+      const warningText = '⚠️ Lower bound is 0';
+      const textWidth = ctx.measureText(warningText).width;
+      ctx.fillText(warningText, cssWidth - margin.right - textWidth - 4, margin.top - 12);
+    } else {
+    const lineY = y(xboundOverlay.signedQError);
+    ctx.strokeStyle = SYSTEM_COLORS.xbound;
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(margin.left, lineY);
+    ctx.lineTo(cssWidth - margin.right, lineY);
+    ctx.stroke();
+
+    const icon = loadSystemIcon('xbound');
+    if (icon && icon.complete && icon.naturalWidth > 0) {
+      const iconSize = 22;
+      const estimateLabel = Number.isFinite(xboundOverlay.estimate)
+        ? formatCardinality(xboundOverlay.estimate)
+        : String(xboundOverlay.estimate);
+      const lowerBoundLabel = `lower bound: ${estimateLabel}`;
+      ctx.fillStyle = '#1f2a4d';
+      ctx.font = ESTIMATE_FONT;
+      const gap = 8;
+      const textWidth = ctx.measureText(lowerBoundLabel).width;
+      const pairWidth = iconSize + gap + textWidth;
+      const minPairX = margin.left + 4;
+      const maxPairX = cssWidth - margin.right - pairWidth - 4;
+      const preferredPairX = cssWidth - margin.right - pairWidth - 8;
+      const pairX = Math.max(minPairX, Math.min(maxPairX, preferredPairX));
+      const iconX = pairX;
+      const textX = iconX + iconSize + gap;
+      const iconY = lineY - iconSize - 6;
+      ctx.drawImage(icon, iconX, iconY, iconSize, iconSize);
+      ctx.fillText(lowerBoundLabel, textX, lineY - 10);
+    }
+    }
+  }
 
   entries.forEach((entry, idx) => {
     const centerX = margin.left + xStep * idx + xStep / 2;
@@ -241,20 +357,50 @@ function renderQErrorBarPlot(entries) {
 
     ctx.fillStyle = accent;
     ctx.globalAlpha = 0.25;
-    ctx.fillRect(centerX - barWidth / 2, Math.min(barTop, baselineY), barWidth, Math.max(1, barHeight));
+    const barY1 = Math.min(barTop, baselineY);
+    const barY2 = Math.max(barTop, baselineY);
+    ctx.fillRect(centerX - barWidth / 2, barY1, barWidth, Math.max(1, barHeight));
     ctx.globalAlpha = 1;
+
+    if (xboundOverlay && !xboundOverlay.unsupported && !xboundOverlay.zeroLowerBound && Number.isFinite(xboundOverlay.estimate) && entry.estimate < xboundOverlay.estimate) {
+      const lineY = y(xboundOverlay.signedQError);
+      const overflowTop = Math.max(lineY, barY1);
+      const overflowBottom = barY2;
+      if (overflowBottom > overflowTop) {
+        ctx.fillStyle = '#ff4d4f';
+        ctx.globalAlpha = 0.5;
+        ctx.fillRect(centerX - barWidth / 2, overflowTop, barWidth, overflowBottom - overflowTop);
+        ctx.globalAlpha = 1;
+      }
+    }
 
     ctx.strokeStyle = '#000000';
     ctx.lineWidth = 2;
     ctx.strokeRect(centerX - barWidth / 2, Math.min(barTop, baselineY), barWidth, Math.max(1, barHeight));
 
     ctx.fillStyle = '#1f2a4d';
-    ctx.font = '11px IBM Plex Sans, sans-serif';
+    ctx.font = ESTIMATE_FONT;
     const qLabelY = (entry.signedQError || entry.qError) >= 0 ? barTop - 6 : barTop + 15;
     const estimateLabel = Number.isFinite(entry.estimate)
-      ? entry.estimate.toLocaleString()
+      ? formatCardinality(entry.estimate)
       : String(entry.estimate);
-    ctx.fillText(estimateLabel, centerX - barWidth / 2 - 2, qLabelY);
+    const estimateLabelWidth = ctx.measureText(estimateLabel).width;
+    ctx.fillText(estimateLabel, centerX - estimateLabelWidth / 2, qLabelY);
+
+    const hasComparableLowerBound = Boolean(
+      xboundOverlay &&
+      !xboundOverlay.unsupported &&
+      !xboundOverlay.zeroLowerBound &&
+      Number.isFinite(xboundOverlay.estimate)
+    );
+    if (hasComparableLowerBound) {
+      const symbol = entry.estimate < xboundOverlay.estimate ? '🤦' : '👌';
+      const symbolY = (entry.signedQError || entry.qError) >= 0 ? qLabelY - 22 : qLabelY + 22;
+      ctx.font = '21px IBM Plex Sans, sans-serif';
+      const symbolWidth = ctx.measureText(symbol).width;
+      ctx.fillText(symbol, centerX - symbolWidth / 2, symbolY);
+      ctx.font = ESTIMATE_FONT;
+    }
   });
 }
 
@@ -278,10 +424,8 @@ function loadSystemIcon(key) {
   return img;
 }
 
-function drawLegend(ctx, centerX, startY, entries) {
-  const hasXBound = entries.some((e) => String(e.system).includes(XBOUND_SUFFIX));
+function drawLegend(ctx, centerX, startY) {
   const keys = ['duckdb', 'postgres', 'fabric dw'];
-  if (hasXBound) keys.push('xbound');
 
   ctx.font = '14px IBM Plex Sans, sans-serif';
   const iconSize = 22;
@@ -352,13 +496,13 @@ function renderLeaderboard(entries) {
   els.leaderboardList.innerHTML = '';
   ranked.forEach((entry) => {
     const li = document.createElement('li');
-    li.textContent = `${entry.system}: q-error ${entry.qError.toFixed(2)}x (estimate ${entry.estimate.toLocaleString()}, actual ${entry.actual.toLocaleString()})`;
+    li.textContent = `${entry.system}: q-error ${entry.qError.toFixed(2)}x (estimate ${formatCardinality(entry.estimate)}, actual ${formatCardinality(entry.actual)})`;
     els.leaderboardList.appendChild(li);
   });
 }
 
 function activeEntries() {
-  return buildEstimateEntries(els.xboundToggle.checked);
+  return buildEstimateEntries(true);
 }
 
 function getSqlText() {
@@ -426,7 +570,7 @@ function updateQuerySelector() {
 
 function syncSqlInput() {
   const queryData = getCurrentQueryData();
-  const sqlText = queryData?.sql || '-- select a query';
+  const sqlText = formatSql(queryData?.sql || '-- select a query');
   if (sqlEditor) sqlEditor.setValue(sqlText);
   else els.sqlInput.value = sqlText;
 
@@ -526,12 +670,6 @@ function bindEvents() {
     if (currentMode === 'leaderboard') renderLeaderboard(entries);
   });
 
-  els.xboundToggle.addEventListener('change', () => {
-    const entries = activeEntries();
-    if (currentMode === 'run') renderQErrorBarPlot(entries);
-    if (currentMode === 'leaderboard') renderLeaderboard(entries);
-  });
-
   els.planSystemSelect.addEventListener('change', () => {
     if (currentMode === 'plan') renderPlanTree(els.planSystemSelect.value);
   });
@@ -539,19 +677,22 @@ function bindEvents() {
   els.runBtn.addEventListener('click', async () => {
     setMode('run');
     const sql = getSqlText().trim();
+    const prettySql = formatSql(sql);
+    if (sqlEditor) sqlEditor.setValue(prettySql);
+    else els.sqlInput.value = prettySql;
     const queryData = queryStore[els.benchmarkSelect.value]?.[els.querySelect.value];
-    const isCustom = !queryData || sql !== String(queryData.sql || '').trim();
+    const isCustom = !queryData || normalizeSql(prettySql) !== normalizeSql(queryData.sql || '');
 
-    if (isCustom && sql && window.xbound?.estimateCustomQuery) {
+    if (isCustom && prettySql && window.xbound?.estimateCustomQuery) {
       els.statusText.textContent = 'Estimating custom query...';
       try {
-        const result = await window.xbound.estimateCustomQuery(els.benchmarkSelect.value, sql);
+        const result = await window.xbound.estimateCustomQuery(els.benchmarkSelect.value, prettySql);
         if (result?.errors && Object.keys(result.errors).length) {
           console.error('[custom-query-estimation][errors]', result.errors);
         }
         const actual = Number(result?.actual);
         customQueryData = {
-          sql,
+          sql: prettySql,
           actual: Number.isFinite(actual) && actual > 0 ? actual : 1,
           estimates: result?.estimates || {},
           xbound: result?.xbound || {}
@@ -605,7 +746,11 @@ async function init() {
       lineNumbers: true,
       lineWrapping: true,
       matchBrackets: true,
-      viewportMargin: Infinity
+      viewportMargin: Infinity,
+      extraKeys: {
+        'Ctrl-Shift-F': (cm) => cm.setValue(formatSql(cm.getValue())),
+        'Cmd-Shift-F': (cm) => cm.setValue(formatSql(cm.getValue()))
+      }
     });
   }
   await ensureBenchmarkLoaded('JOBlight');

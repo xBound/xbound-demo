@@ -21,6 +21,16 @@ const BENCHMARK_CANONICAL_MAP = {
   stats_ceb: 'stats_ceb',
   statsceb: 'stats_ceb'
 };
+const XBOUND_FILE_PREFERENCE = {
+  joblight: '_host=hausberg_parts=16_ns=1_ub=0_l0-theta=8_hh-theta=12_mcv=1024.jsonl',
+  so_full_ceb: '_host=hausberg_parts=16_ns=1_ub=0_l0-theta=8_hh-theta=12_mcv=1024.jsonl',
+  stats_ceb: '_host=hausberg_parts=16_ns=1_ub=0_l0-theta=8_hh-theta=12_mcv=1024.jsonl'
+};
+const WORKLOAD_FILE_PREFERENCE = {
+  so_full_ceb: 'so_full_ceb-queries00.jsonl',
+  joblight: 'joblight-queries.jsonl',
+  stats_ceb: 'stats_ceb-queries.jsonl'
+};
 
 function estimationRoots() {
   const roots = [];
@@ -53,6 +63,13 @@ function benchmarkAliases(benchmarkName) {
 function canonicalBenchmark(benchmarkName) {
   const benchmark = String(benchmarkName || '').trim().toLowerCase();
   return BENCHMARK_CANONICAL_MAP[benchmark] || BENCHMARK_CANONICAL_MAP[benchmark.replace(/[^a-z0-9_]+/g, '')] || benchmark;
+}
+
+function isPreferredEstimateFile(alias, fileName) {
+  if (alias === 'so_full_ceb') {
+    return fileName.includes('queries00');
+  }
+  return true;
 }
 
 function systemKey(systemName) {
@@ -166,7 +183,12 @@ async function readBenchmarkEstimates(benchmarkName) {
       const dirPath = path.join(root, alias);
       try {
         const files = await fs.readdir(dirPath);
-        const systemFile = files.find((name) => name.startsWith('system::') && name.includes(`::${alias}-queries`) && name.endsWith('.jsonl'));
+        const systemFile = files.find((name) =>
+          name.startsWith('system::') &&
+          name.includes(`::${alias}-queries`) &&
+          name.endsWith('.jsonl') &&
+          isPreferredEstimateFile(alias, name)
+        );
         if (!systemFile) continue;
         const filePath = path.join(dirPath, systemFile);
         searchedPaths.push(filePath);
@@ -205,6 +227,8 @@ async function readBenchmarkEstimates(benchmarkName) {
         for (const file of files) {
           const fullPath = path.join(dirPath, file);
           if (!(file.includes(`::${alias}-queries`) && file.endsWith('.jsonl'))) continue;
+          if (!isPreferredEstimateFile(alias, file)) continue;
+          if (file.startsWith('xbound::')) continue;
           const content = await fs.readFile(fullPath, 'utf8');
           const lines = content.split(/\r?\n/);
 
@@ -241,6 +265,38 @@ async function readBenchmarkEstimates(benchmarkName) {
               }
             }
           }
+        }
+
+        // Handle xbound with deterministic file choice.
+        const xboundFiles = files
+          .filter((name) => name.startsWith('xbound::') && name.includes(`::${alias}-queries`) && name.endsWith('.jsonl') && isPreferredEstimateFile(alias, name))
+          .sort();
+        if (xboundFiles.length) {
+          const preferredSuffix = XBOUND_FILE_PREFERENCE[alias];
+          const chosen = (preferredSuffix && xboundFiles.find((name) => name.endsWith(preferredSuffix))) || xboundFiles[0];
+          const content = await fs.readFile(path.join(dirPath, chosen), 'utf8');
+          const lines = content.split(/\r?\n/);
+          for (const rawLine of lines) {
+            const line = rawLine.trim();
+            if (!line) continue;
+            let obj;
+            try {
+              obj = JSON.parse(line);
+            } catch {
+              continue;
+            }
+            upsert(obj);
+            const key = queryKey(obj);
+            if (!key) continue;
+            const entry = queries[key];
+            const val = numericValue(obj.xbound, obj?.meta?.best?.val);
+            if (val !== null) {
+              entry.xbound.duckdb = val;
+              entry.xbound.postgres = val;
+              entry.xbound['fabric dw'] = val;
+            }
+          }
+          console.error(`[xbound] using ${path.join(dirPath, chosen)}`);
         }
 
         if (Object.keys(queries).length > 0) {
@@ -302,10 +358,16 @@ async function readWorkloadQueries(benchmarkName) {
       try {
         const dirPath = path.join(root, alias);
         const files = await fs.readdir(dirPath);
-        const workloadFile = files.find((name) => name.startsWith(`${alias}-queries`) && name.endsWith('.jsonl'));
+        const preferred = WORKLOAD_FILE_PREFERENCE[alias];
+        const workloadFile = (preferred && files.includes(preferred))
+          ? preferred
+          : files
+            .filter((name) => name.startsWith(`${alias}-queries`) && name.endsWith('.jsonl'))
+            .sort()[0];
         if (!workloadFile) continue;
         const fullPath = path.join(dirPath, workloadFile);
         searchedPaths.push(fullPath);
+        console.error(`[workload] using ${fullPath}`);
         const content = await fs.readFile(fullPath, 'utf8');
         const queries = {};
         content.split(/\r?\n/).forEach((rawLine) => {
