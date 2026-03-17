@@ -219,8 +219,9 @@ function renderQErrorBarPlot(entries) {
   const canvas = els.chartCanvas;
   const ctx = canvas.getContext('2d');
   const dpr = window.devicePixelRatio || 1;
-  const cssWidth = canvas.clientWidth || canvas.width;
-  const cssHeight = canvas.clientHeight || canvas.height;
+  const parentWidth = canvas.parentElement?.clientWidth || 900;
+  const cssWidth = Math.max(320, parentWidth - 2);
+  const cssHeight = Math.max(240, canvas.clientHeight || 340);
 
   canvas.width = Math.floor(cssWidth * dpr);
   canvas.height = Math.floor(cssHeight * dpr);
