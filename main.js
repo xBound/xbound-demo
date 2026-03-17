@@ -7,6 +7,7 @@ const WORKLOAD_SUFFIX = path.join('LpBound', 'benchmarks', 'workloads');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 const execFileAsync = promisify(execFile);
+const APP_ICON_PATH = path.join(__dirname, 'icons', 'xbound-icon.png');
 
 const BENCHMARK_CANONICAL_MAP = {
   joblight: 'joblight',
@@ -379,6 +380,7 @@ function createWindow() {
     minWidth: 1100,
     minHeight: 700,
     backgroundColor: '#f4f6fb',
+    icon: APP_ICON_PATH,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -390,6 +392,10 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  if (process.platform === 'darwin') {
+    app.dock.setIcon(APP_ICON_PATH);
+  }
+
   ipcMain.handle('xbound:load-precomputed-estimates', async (_event, benchmark) => {
     return readBenchmarkEstimates(benchmark);
   });

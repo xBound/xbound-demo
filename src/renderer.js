@@ -1,10 +1,29 @@
 const SYSTEMS = ['duckdb', 'postgres', 'fabric dw'];
 const XBOUND_SUFFIX = ' xBound-ed';
 const BENCHMARKS = ['JOBlight', 'SO-CEB', 'STATS-CEB'];
+const SYSTEM_ICON_PATHS = {
+  duckdb: '../icons/duckdb-icon.png',
+  postgres: '../icons/postgres-icon.png',
+  'fabric dw': '../icons/dw-icon.png',
+  xbound: '../icons/xbound-icon.png'
+};
+const SYSTEM_LABELS = {
+  duckdb: 'DuckDB',
+  postgres: 'PostgreSQL',
+  'fabric dw': 'Fabric DW',
+  xbound: 'xBound-ed DBMS'
+};
+const SYSTEM_COLORS = {
+  duckdb: '#FFF100',
+  postgres: '#0064a5',
+  'fabric dw': '#8ae8ff',
+  xbound: '#D3D3D3'
+};
 
 let queryStore = Object.fromEntries(BENCHMARKS.map((name) => [name, {}]));
 const loadedBenchmarks = new Set();
 let customQueryData = null;
+const systemIconCache = {};
 
 const MOCK_PLAN_JSON = {
   duckdb: {
@@ -159,7 +178,7 @@ function renderQErrorBarPlot(entries) {
   canvas.height = Math.floor(cssHeight * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-  const margin = { top: 20, right: 26, bottom: 76, left: 68 };
+  const margin = { top: 64, right: 26, bottom: 52, left: 68 };
   const width = cssWidth - margin.left - margin.right;
   const height = cssHeight - margin.top - margin.bottom;
   const baselineY = margin.top + height / 2;
@@ -209,6 +228,7 @@ function renderQErrorBarPlot(entries) {
     ? `actual: ${actualBaseline.toLocaleString()}`
     : 'actual';
   ctx.fillText(baselineLabel, margin.left + 8, baselineY - 8);
+  drawLegend(ctx, cssWidth / 2, 18, entries);
 
   entries.forEach((entry, idx) => {
     const centerX = margin.left + xStep * idx + xStep / 2;
@@ -216,26 +236,78 @@ function renderQErrorBarPlot(entries) {
     const barTop = y(entry.signedQError || entry.qError);
     const barHeight = Math.abs(barTop - baselineY);
     const isXBound = entry.system.includes(XBOUND_SUFFIX);
-    const accent = isXBound ? '#09b48b' : '#1461ff';
+    const colorKey = isXBound ? 'xbound' : systemKeyForEntry(entry.system);
+    const accent = SYSTEM_COLORS[colorKey] || '#1461ff';
 
     ctx.fillStyle = accent;
     ctx.globalAlpha = 0.25;
     ctx.fillRect(centerX - barWidth / 2, Math.min(barTop, baselineY), barWidth, Math.max(1, barHeight));
     ctx.globalAlpha = 1;
 
-    ctx.strokeStyle = accent;
+    ctx.strokeStyle = '#000000';
     ctx.lineWidth = 2;
     ctx.strokeRect(centerX - barWidth / 2, Math.min(barTop, baselineY), barWidth, Math.max(1, barHeight));
 
     ctx.fillStyle = '#1f2a4d';
     ctx.font = '11px IBM Plex Sans, sans-serif';
-    const label = entry.system.length > 14 ? `${entry.system.slice(0, 13)}...` : entry.system;
     const qLabelY = (entry.signedQError || entry.qError) >= 0 ? barTop - 6 : barTop + 15;
     const estimateLabel = Number.isFinite(entry.estimate)
       ? entry.estimate.toLocaleString()
       : String(entry.estimate);
-    ctx.fillText(label, centerX - barWidth / 2 - 6, cssHeight - 36);
     ctx.fillText(estimateLabel, centerX - barWidth / 2 - 2, qLabelY);
+  });
+}
+
+function systemKeyForEntry(systemLabel) {
+  const s = String(systemLabel || '').toLowerCase();
+  if (s.includes('duckdb')) return 'duckdb';
+  if (s.includes('postgres')) return 'postgres';
+  if (s.includes('fabric')) return 'fabric dw';
+  return null;
+}
+
+function loadSystemIcon(key) {
+  if (!key || !SYSTEM_ICON_PATHS[key]) return null;
+  if (systemIconCache[key]) return systemIconCache[key];
+  const img = new Image();
+  img.src = SYSTEM_ICON_PATHS[key];
+  img.onload = () => {
+    if (currentMode === 'run') renderQErrorBarPlot(activeEntries());
+  };
+  systemIconCache[key] = img;
+  return img;
+}
+
+function drawLegend(ctx, centerX, startY, entries) {
+  const hasXBound = entries.some((e) => String(e.system).includes(XBOUND_SUFFIX));
+  const keys = ['duckdb', 'postgres', 'fabric dw'];
+  if (hasXBound) keys.push('xbound');
+
+  ctx.font = '14px IBM Plex Sans, sans-serif';
+  const iconSize = 22;
+  const itemGap = 28;
+  const iconGap = 8;
+
+  const itemWidths = keys.map((key) => {
+    const label = SYSTEM_LABELS[key] || key;
+    return iconSize + iconGap + ctx.measureText(label).width;
+  });
+  const totalWidth = itemWidths.reduce((a, b) => a + b, 0) + itemGap * Math.max(0, keys.length - 1);
+
+  let x = centerX - totalWidth / 2;
+  keys.forEach((key) => {
+    const icon = loadSystemIcon(key);
+    const label = SYSTEM_LABELS[key] || key;
+
+    if (icon && icon.complete && icon.naturalWidth > 0) {
+      ctx.drawImage(icon, x, startY + 1, iconSize, iconSize);
+      x += iconSize + iconGap;
+    }
+
+    ctx.fillStyle = '#1f2a4d';
+    ctx.font = '14px IBM Plex Sans, sans-serif';
+    ctx.fillText(label, x, startY + 18);
+    x += ctx.measureText(label).width + itemGap;
   });
 }
 
