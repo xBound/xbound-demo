@@ -4,6 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>xBound VLDB26 Demo</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/codemirror.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/theme/neo.min.css" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -22,7 +24,9 @@
           </div>
           <div class="sql-content">
             <label for="sqlInput">SQL Query</label>
-            <textarea id="sqlInput" spellcheck="false"></textarea>
+            <div class="sql-editor-wrap">
+              <textarea id="sqlInput" spellcheck="false"></textarea>
+            </div>
             <div class="inline-meta">
               <span id="statusText">Ready</span>
             </div>
@@ -65,6 +69,8 @@
       </main>
     </div>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/mode/sql/sql.min.js"></script>
     <script src="./renderer.js"></script>
   </body>
 </html>

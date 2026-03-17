@@ -91,6 +91,9 @@ const MOCK_QUERIES = {
     }
   }
 };
+let queryStore = JSON.parse(JSON.stringify(MOCK_QUERIES));
+queryStore.JOBlight = {};
+const loadedBenchmarks = new Set();
 
 const MOCK_PLAN_JSON = {
   duckdb: {
@@ -183,31 +186,42 @@ const els = {
 };
 
 let currentMode = 'run';
+let sqlEditor = null;
 
 function getCurrentQueryData() {
   const benchmark = els.benchmarkSelect.value;
   const queryName = els.querySelect.value;
-  return MOCK_QUERIES[benchmark]?.[queryName];
+  return queryStore[benchmark]?.[queryName];
 }
 
 function buildEstimateEntries(includeXBound) {
   const queryData = getCurrentQueryData();
   if (!queryData) return [];
 
-  const entries = SYSTEMS.map((system) => ({
-    system,
-    estimate: queryData.estimates[system],
-    actual: queryData.actual,
-    qError: queryData.estimates[system] / queryData.actual
-  }));
+  const entries = SYSTEMS
+    .map((system) => {
+      const estimate = queryData.estimates?.[system];
+      const actual = queryData.actual;
+      if (!Number.isFinite(estimate) || !Number.isFinite(actual) || actual === 0) return null;
+      return {
+        system,
+        estimate,
+        actual,
+        qError: estimate / actual
+      };
+    })
+    .filter(Boolean);
 
   if (includeXBound) {
     SYSTEMS.forEach((system) => {
+      const estimate = queryData.xbound?.[system];
+      const actual = queryData.actual;
+      if (!Number.isFinite(estimate) || !Number.isFinite(actual) || actual === 0) return;
       entries.push({
         system: `${system}${XBOUND_SUFFIX}`,
-        estimate: queryData.xbound[system],
-        actual: queryData.actual,
-        qError: queryData.xbound[system] / queryData.actual
+        estimate,
+        actual,
+        qError: estimate / actual
       });
     });
   }
@@ -369,7 +383,7 @@ function setMode(mode) {
 }
 
 function populateSelectors() {
-  Object.keys(MOCK_QUERIES).forEach((benchmark) => {
+  Object.keys(queryStore).forEach((benchmark) => {
     const option = document.createElement('option');
     option.value = benchmark;
     option.textContent = benchmark;
@@ -388,7 +402,7 @@ function populateSelectors() {
 
 function updateQuerySelector() {
   const benchmark = els.benchmarkSelect.value;
-  const queries = Object.keys(MOCK_QUERIES[benchmark]);
+  const queries = Object.keys(queryStore[benchmark] || {});
 
   els.querySelect.innerHTML = '';
   queries.forEach((q) => {
@@ -403,15 +417,91 @@ function updateQuerySelector() {
 
 function syncSqlInput() {
   const queryData = getCurrentQueryData();
-  els.sqlInput.value = queryData?.sql || '-- select a query';
+  const sqlText = queryData?.sql || '-- select a query';
+  if (sqlEditor) sqlEditor.setValue(sqlText);
+  else els.sqlInput.value = sqlText;
 
-  if (queryData) {
+  if (queryData && Number.isFinite(queryData.actual)) {
     els.statusText.textContent = `actual cardinality: ${queryData.actual.toLocaleString()}`;
   }
 }
 
+function normalizeLoadedQuery(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  return {
+    sql: raw.sql,
+    actual: Number.isFinite(Number(raw.actual)) ? Number(raw.actual) : undefined,
+    estimates: raw.estimates && typeof raw.estimates === 'object' ? raw.estimates : {},
+    xbound: raw.xbound && typeof raw.xbound === 'object' ? raw.xbound : {}
+  };
+}
+
+function canonicalQueryName(benchmark, queryName) {
+  const b = String(benchmark || '').toLowerCase();
+  const q = String(queryName || '').trim();
+  if (!q) return q;
+  if (b === 'joblight' || b === 'job') {
+    if (/^q\d+$/i.test(q)) return `Q${q.replace(/^q/i, '')}`;
+    if (/^\d+$/.test(q)) return `Q${q}`;
+  }
+  return q;
+}
+
+async function ensureBenchmarkLoaded(benchmark) {
+  if (loadedBenchmarks.has(benchmark)) return;
+  loadedBenchmarks.add(benchmark);
+
+  const estimateLoader = window.xbound?.loadPrecomputedEstimates;
+  const workloadLoader = window.xbound?.loadWorkloadQueries;
+  queryStore[benchmark] ||= {};
+
+  try {
+    if (typeof workloadLoader === 'function') {
+      const workloadResult = await workloadLoader(benchmark);
+      if (workloadResult?.ok && workloadResult.queries && typeof workloadResult.queries === 'object') {
+        if (String(benchmark).toLowerCase() === 'joblight') {
+          queryStore[benchmark] = {};
+        }
+        Object.entries(workloadResult.queries).forEach(([queryName, queryData]) => {
+          const canonicalName = canonicalQueryName(benchmark, queryName);
+          queryStore[benchmark][canonicalName] ||= { sql: '', actual: 0, estimates: {}, xbound: {} };
+          if (typeof queryData?.sql === 'string' && queryData.sql) {
+            queryStore[benchmark][canonicalName].sql = queryData.sql;
+          }
+        });
+        els.statusText.textContent = `Loaded workload queries from ${workloadResult.sourcePath}`;
+      }
+    }
+
+    if (typeof estimateLoader === 'function') {
+      const estimateResult = await estimateLoader(benchmark);
+      if (estimateResult?.ok && estimateResult.queries && typeof estimateResult.queries === 'object') {
+        Object.entries(estimateResult.queries).forEach(([queryName, queryData]) => {
+          const canonicalName = canonicalQueryName(benchmark, queryName);
+          const loaded = normalizeLoadedQuery(queryData);
+          if (!loaded) return;
+
+          queryStore[benchmark][canonicalName] ||= { sql: '', actual: 0, estimates: {}, xbound: {} };
+          const current = queryStore[benchmark][canonicalName];
+          queryStore[benchmark][canonicalName] = {
+            ...current,
+            sql: loaded.sql || current.sql,
+            actual: loaded.actual || current.actual,
+            estimates: { ...(current.estimates || {}), ...(loaded.estimates || {}) },
+            xbound: { ...(current.xbound || {}), ...(loaded.xbound || {}) }
+          };
+        });
+        els.statusText.textContent = `Loaded precomputed estimates from ${estimateResult.sourcePath}`;
+      }
+    }
+  } catch {
+    // Keep mock data and stay silent on load failures.
+  }
+}
+
 function bindEvents() {
-  els.benchmarkSelect.addEventListener('change', () => {
+  els.benchmarkSelect.addEventListener('change', async () => {
+    await ensureBenchmarkLoaded(els.benchmarkSelect.value);
     updateQuerySelector();
     const entries = activeEntries();
     if (currentMode === 'run') renderQErrorBarPlot(entries);
@@ -458,8 +548,21 @@ function bindEvents() {
   });
 }
 
-function init() {
+async function init() {
   els.appName.textContent = window.xbound?.appName || 'xBound';
+  if (window.CodeMirror && els.sqlInput) {
+    sqlEditor = window.CodeMirror.fromTextArea(els.sqlInput, {
+      mode: 'text/x-sql',
+      theme: 'neo',
+      lineNumbers: true,
+      lineWrapping: true,
+      matchBrackets: true,
+      viewportMargin: Infinity
+    });
+  }
+  await ensureBenchmarkLoaded('JOB');
+  await ensureBenchmarkLoaded('JOBlight');
+  await ensureBenchmarkLoaded('TPC-H');
   populateSelectors();
   bindEvents();
   setMode('run');
