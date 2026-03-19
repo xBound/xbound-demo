@@ -608,15 +608,13 @@ function loadSystemIcon(key) {
   const redraw = () => {
     if (currentMode === 'run') renderQErrorBarPlot(activeEntries());
   };
+  // Cache before assigning src to avoid recursive re-entry on cached images.
+  systemIconCache[key] = img;
   img.onload = redraw;
   img.onerror = () => {
     // Keep rendering even when an icon cannot be loaded.
   };
   img.src = SYSTEM_ICON_PATHS[key];
-  if (img.complete && img.naturalWidth > 0) {
-    redraw();
-  }
-  systemIconCache[key] = img;
   return img;
 }
 
