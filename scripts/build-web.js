@@ -30,12 +30,19 @@ async function copyDir(src, dest) {
 
 async function build() {
   await cleanDist();
+  const buildVersion = (process.env.GITHUB_SHA || `${Date.now()}`).slice(0, 12);
 
   const srcIndexPath = path.join(ROOT, 'src', 'index.html');
   const srcIndex = await fs.readFile(srcIndexPath, 'utf8');
 
   const webIndex = srcIndex
     .replaceAll('../icons/', './icons/')
+    .replace('href="./styles.css"', `href="./styles.css?v=${buildVersion}"`)
+    .replace('src="./renderer.js"', `src="./renderer.js?v=${buildVersion}"`)
+    .replace(
+      '<script src="./renderer.js',
+      `<script>window.__XBOUND_BUILD_VERSION__ = "${buildVersion}";</script>\n    <script src="./renderer.js`
+    )
     .replace('<title>xBound VLDB26 Demo</title>', '<title>xBound Demo Dashboard</title>');
 
   await fs.writeFile(path.join(DIST, 'index.html'), webIndex, 'utf8');

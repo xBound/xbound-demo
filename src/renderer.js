@@ -428,6 +428,7 @@ function xboundOverlayEntry() {
 function renderQErrorBarPlot(entries) {
   const canvas = els.chartCanvas;
   const ctx = canvas.getContext('2d');
+  if (!ctx) return;
   const dpr = window.devicePixelRatio || 1;
   const parentWidth = canvas.parentElement?.clientWidth || 900;
   const cssWidth = Math.max(320, parentWidth - 2);
@@ -1001,27 +1002,39 @@ function bindEvents() {
 
 async function init() {
   els.appName.textContent = window.xbound?.appName || 'xBound (Web)';
-  if (window.CodeMirror && els.sqlInput) {
-    sqlEditor = window.CodeMirror.fromTextArea(els.sqlInput, {
-      mode: 'text/x-sql',
-      theme: 'neo',
-      lineNumbers: true,
-      lineWrapping: true,
-      matchBrackets: true,
-      viewportMargin: Infinity,
-      extraKeys: {
-        'Ctrl-Shift-F': (cm) => cm.setValue(formatSql(cm.getValue())),
-        'Cmd-Shift-F': (cm) => cm.setValue(formatSql(cm.getValue()))
-      }
-    });
+  try {
+    if (window.CodeMirror && els.sqlInput) {
+      sqlEditor = window.CodeMirror.fromTextArea(els.sqlInput, {
+        mode: 'text/x-sql',
+        theme: 'neo',
+        lineNumbers: true,
+        lineWrapping: true,
+        matchBrackets: true,
+        viewportMargin: Infinity,
+        extraKeys: {
+          'Ctrl-Shift-F': (cm) => cm.setValue(formatSql(cm.getValue())),
+          'Cmd-Shift-F': (cm) => cm.setValue(formatSql(cm.getValue()))
+        }
+      });
+    }
+  } catch (err) {
+    console.error('[init][codemirror-failed]', err);
+    sqlEditor = null;
   }
-  await ensureBenchmarkLoaded('JOBlight');
-  await ensureBenchmarkLoaded('SO-CEB');
-  await ensureBenchmarkLoaded('STATS-CEB');
-  populateSelectors();
-  updateXboundParamsState();
-  bindEvents();
-  setMode('run');
+
+  try {
+    await ensureBenchmarkLoaded('JOBlight');
+    await ensureBenchmarkLoaded('SO-CEB');
+    await ensureBenchmarkLoaded('STATS-CEB');
+    populateSelectors();
+    updateXboundParamsState();
+    bindEvents();
+    setMode('run');
+  } catch (err) {
+    console.error('[init][failed]', err);
+    els.statusText.textContent = 'Render failed in this browser. Check console logs.';
+    renderQErrorBarPlot([]);
+  }
 }
 
 init();
