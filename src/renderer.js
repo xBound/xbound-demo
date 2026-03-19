@@ -1,11 +1,13 @@
 const SYSTEMS = ['duckdb', 'postgres', 'fabric dw'];
 const XBOUND_SUFFIX = ' xBound-ed';
 const BENCHMARKS = ['JOBlight', 'SO-CEB', 'STATS-CEB'];
+const IS_ELECTRON = typeof window.xbound !== 'undefined';
+const ICON_BASE_PATH = IS_ELECTRON ? '../icons' : './icons';
 const SYSTEM_ICON_PATHS = {
-  duckdb: '../icons/duckdb-icon.png',
-  postgres: '../icons/postgres-icon.png',
-  'fabric dw': '../icons/dw-icon.png',
-  xbound: '../icons/xbound-icon.png'
+  duckdb: `${ICON_BASE_PATH}/duckdb-icon.png`,
+  postgres: `${ICON_BASE_PATH}/postgres-icon.png`,
+  'fabric dw': `${ICON_BASE_PATH}/dw-icon.png`,
+  xbound: `${ICON_BASE_PATH}/xbound-icon.png`
 };
 const SYSTEM_LABELS = {
   duckdb: 'DuckDB',
