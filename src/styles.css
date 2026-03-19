@@ -33,12 +33,18 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
   margin-bottom: 16px;
+  min-width: 0;
 }
 
 .top-header h1 {
   margin: 0;
   font-size: 1.45rem;
+  line-height: 1.2;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 #appName {
@@ -48,8 +54,12 @@ body {
 
 .layout-grid {
   display: grid;
-  grid-template-columns: 2fr 1fr;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
   gap: 16px;
+}
+
+.layout-grid > * {
+  min-width: 0;
 }
 
 .card {
@@ -64,7 +74,7 @@ body {
   grid-row: 1 / 2;
   display: grid;
   grid-template-columns: 74px 1fr;
-  min-height: 300px;
+  min-height: clamp(220px, 34vh, 300px);
 }
 
 .left-actions {
@@ -109,7 +119,7 @@ body {
 .sql-editor-wrap {
   position: relative;
   width: 100%;
-  height: 230px;
+  height: clamp(150px, 24vh, 230px);
   border: 1px solid var(--line);
   border-radius: 2px;
   overflow: hidden;
@@ -119,7 +129,7 @@ body {
 
 #sqlInput {
   width: 100%;
-  height: 230px;
+  height: clamp(150px, 24vh, 230px);
   margin: 0;
   border: 0;
   border-radius: 0;
@@ -132,7 +142,7 @@ body {
 }
 
 .CodeMirror {
-  height: 230px;
+  height: clamp(150px, 24vh, 230px);
   font-family: var(--font-mono);
   font-size: 0.9rem;
   line-height: 1.45;
@@ -250,7 +260,7 @@ option {
 #chartCanvas {
   display: block;
   width: 100%;
-  height: 340px;
+  height: clamp(220px, 32vh, 340px);
   max-width: 100%;
   border: 1px solid #e3e8f5;
   border-radius: 2px;
@@ -316,6 +326,31 @@ option {
 
 .hidden {
   display: none;
+}
+
+@media (max-width: 1080px) {
+  .layout-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sql-panel,
+  .controls-panel,
+  .xbound-panel,
+  .chart-panel {
+    grid-column: 1 / 2;
+  }
+
+  .controls-panel {
+    grid-row: auto;
+  }
+
+  .xbound-panel {
+    grid-row: auto;
+  }
+
+  .chart-panel {
+    grid-row: auto;
+  }
 }
 
 @media (max-width: 980px) {

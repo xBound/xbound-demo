@@ -43,8 +43,7 @@ async function build() {
     .replace(
       '<script src="./renderer.js',
       `<script>window.__XBOUND_BUILD_VERSION__ = "${buildVersion}";</script>\n    <script src="./renderer.js`
-    )
-    .replace('<title>xBound VLDB26 Demo</title>', '<title>xBound Demo Dashboard</title>');
+    );
 
   await fs.writeFile(path.join(DIST, 'index.html'), webIndex, 'utf8');
   await copyFile(path.join(ROOT, 'src', 'styles.css'), path.join(DIST, 'styles.css'));
