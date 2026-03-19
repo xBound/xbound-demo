@@ -2,7 +2,14 @@ const SYSTEMS = ['duckdb', 'postgres', 'fabric dw'];
 const XBOUND_SUFFIX = ' xBound-ed';
 const BENCHMARKS = ['JOBlight', 'SO-CEB', 'STATS-CEB'];
 const IS_ELECTRON = typeof window.xbound !== 'undefined';
-const ICON_BASE_PATH = IS_ELECTRON ? '../icons' : './icons';
+function webBasePath() {
+  const pathname = window.location.pathname || '/';
+  if (pathname.endsWith('/')) return pathname;
+  if (pathname.endsWith('.html')) return pathname.slice(0, pathname.lastIndexOf('/') + 1);
+  return `${pathname}/`;
+}
+const WEB_BASE_PATH = IS_ELECTRON ? '' : webBasePath();
+const ICON_BASE_PATH = IS_ELECTRON ? '../icons' : `${WEB_BASE_PATH}icons`;
 const SYSTEM_ICON_PATHS = {
   duckdb: `${ICON_BASE_PATH}/duckdb-icon.png`,
   postgres: `${ICON_BASE_PATH}/postgres-icon.png`,
@@ -23,7 +30,7 @@ const SYSTEM_COLORS = {
 };
 const UI_FONT_FAMILY = '"Palatino Linotype", Palatino, "URW Palladio L", "Book Antiqua", serif';
 const ESTIMATE_FONT = `15px ${UI_FONT_FAMILY}`;
-const WEB_DATA_BASE = './data/benchmarks';
+const WEB_DATA_BASE = IS_ELECTRON ? './data/benchmarks' : `${WEB_BASE_PATH}data/benchmarks`;
 
 let queryStore = Object.fromEntries(BENCHMARKS.map((name) => [name, {}]));
 const loadedBenchmarks = new Set();
