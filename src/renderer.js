@@ -10,11 +10,19 @@ function webBasePath() {
 }
 const WEB_BASE_PATH = IS_ELECTRON ? '' : webBasePath();
 const ICON_BASE_PATH = IS_ELECTRON ? '../icons' : `${WEB_BASE_PATH}icons`;
+function resolveAssetPath(pathname) {
+  if (IS_ELECTRON) return pathname;
+  try {
+    return new URL(pathname, window.location.href).toString();
+  } catch {
+    return pathname;
+  }
+}
 const SYSTEM_ICON_PATHS = {
-  duckdb: `${ICON_BASE_PATH}/duckdb-icon.png`,
-  postgres: `${ICON_BASE_PATH}/postgres-icon.png`,
-  'fabric dw': `${ICON_BASE_PATH}/dw-icon.png`,
-  xbound: `${ICON_BASE_PATH}/xbound-icon.png`
+  duckdb: resolveAssetPath(`${ICON_BASE_PATH}/duckdb-icon.png`),
+  postgres: resolveAssetPath(`${ICON_BASE_PATH}/postgres-icon.png`),
+  'fabric dw': resolveAssetPath(`${ICON_BASE_PATH}/dw-icon.png`),
+  xbound: resolveAssetPath(`${ICON_BASE_PATH}/xbound-icon.png`)
 };
 const SYSTEM_LABELS = {
   duckdb: 'DuckDB',
@@ -36,6 +44,7 @@ let queryStore = Object.fromEntries(BENCHMARKS.map((name) => [name, {}]));
 const loadedBenchmarks = new Set();
 let customQueryData = null;
 const systemIconCache = {};
+let iconRedrawRaf = 0;
 
 const MOCK_PLAN_JSON = {
   duckdb: {
@@ -510,7 +519,7 @@ function renderQErrorBarPlot(entries) {
     ctx.stroke();
 
     const icon = loadSystemIcon('xbound');
-    if (icon && icon.complete && icon.naturalWidth > 0) {
+    if (icon && icon._xboundState === 'ready' && icon.complete && icon.naturalWidth > 0) {
       const iconSize = 22;
       const estimateLabel = Number.isFinite(xboundOverlay.estimate)
         ? formatCardinality(xboundOverlay.estimate)
@@ -606,13 +615,23 @@ function loadSystemIcon(key) {
   if (systemIconCache[key]) return systemIconCache[key];
   const img = new Image();
   const redraw = () => {
-    if (currentMode === 'run') renderQErrorBarPlot(activeEntries());
+    if (iconRedrawRaf) return;
+    iconRedrawRaf = window.requestAnimationFrame(() => {
+      iconRedrawRaf = 0;
+      if (currentMode === 'run') renderQErrorBarPlot(activeEntries());
+    });
   };
   // Cache before assigning src to avoid recursive re-entry on cached images.
+  img._xboundState = 'loading';
   systemIconCache[key] = img;
-  img.onload = redraw;
+  img.onload = () => {
+    img._xboundState = 'ready';
+    redraw();
+  };
   img.onerror = () => {
     // Keep rendering even when an icon cannot be loaded.
+    img._xboundState = 'error';
+    redraw();
   };
   img.src = SYSTEM_ICON_PATHS[key];
   return img;
@@ -637,7 +656,7 @@ function drawLegend(ctx, centerX, startY) {
     const icon = loadSystemIcon(key);
     const label = SYSTEM_LABELS[key] || key;
 
-    if (icon && icon.complete && icon.naturalWidth > 0) {
+    if (icon && icon._xboundState === 'ready' && icon.complete && icon.naturalWidth > 0) {
       ctx.drawImage(icon, x, startY + 1, iconSize, iconSize);
       x += iconSize + iconGap;
     }
