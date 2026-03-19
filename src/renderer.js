@@ -598,10 +598,17 @@ function loadSystemIcon(key) {
   if (!key || !SYSTEM_ICON_PATHS[key]) return null;
   if (systemIconCache[key]) return systemIconCache[key];
   const img = new Image();
-  img.src = SYSTEM_ICON_PATHS[key];
-  img.onload = () => {
+  const redraw = () => {
     if (currentMode === 'run') renderQErrorBarPlot(activeEntries());
   };
+  img.onload = redraw;
+  img.onerror = () => {
+    // Keep rendering even when an icon cannot be loaded.
+  };
+  img.src = SYSTEM_ICON_PATHS[key];
+  if (img.complete && img.naturalWidth > 0) {
+    redraw();
+  }
   systemIconCache[key] = img;
   return img;
 }
