@@ -21,6 +21,7 @@ const SYSTEM_COLORS = {
 };
 const UI_FONT_FAMILY = '"Palatino Linotype", Palatino, "URW Palladio L", "Book Antiqua", serif';
 const ESTIMATE_FONT = `15px ${UI_FONT_FAMILY}`;
+const WEB_DATA_BASE = './data/benchmarks';
 
 let queryStore = Object.fromEntries(BENCHMARKS.map((name) => [name, {}]));
 const loadedBenchmarks = new Set();
@@ -122,6 +123,169 @@ const els = {
 
 let currentMode = 'run';
 let sqlEditor = null;
+const supportsCustomQuery = typeof window.xbound?.estimateCustomQuery === 'function';
+
+function benchmarkSlug(benchmark) {
+  const b = String(benchmark || '').trim().toLowerCase();
+  if (b === 'job' || b === 'joblight') return 'joblight';
+  if (b === 'so-ceb' || b === 'so_ceb' || b === 'so_full_ceb') return 'so_full_ceb';
+  if (b === 'stats-ceb' || b === 'stats_ceb') return 'stats_ceb';
+  return b.replace(/[^a-z0-9_]+/g, '_');
+}
+
+function queryKey(obj) {
+  return (
+    obj.tag ||
+    obj.query ||
+    obj.query_name ||
+    obj.query_id ||
+    obj.id ||
+    obj.name ||
+    null
+  );
+}
+
+function numericValue(...values) {
+  for (const value of values) {
+    const num = Number(value);
+    if (Number.isFinite(num)) return num;
+  }
+  return null;
+}
+
+async function fetchText(pathname) {
+  const response = await fetch(pathname, { cache: 'no-store' });
+  if (!response.ok) {
+    throw new Error(`Failed to load ${pathname}: ${response.status}`);
+  }
+  return response.text();
+}
+
+function parseJsonl(content) {
+  const rows = [];
+  String(content || '')
+    .split(/\r?\n/)
+    .forEach((rawLine) => {
+      const line = rawLine.trim();
+      if (!line) return;
+      try {
+        rows.push(JSON.parse(line));
+      } catch {
+        // Ignore malformed lines.
+      }
+    });
+  return rows;
+}
+
+async function loadWorkloadQueriesWeb(benchmark) {
+  const alias = benchmarkSlug(benchmark);
+  const fileByAlias = {
+    joblight: 'joblight-queries.jsonl',
+    so_full_ceb: 'so_full_ceb-queries00.jsonl',
+    stats_ceb: 'stats_ceb-queries.jsonl'
+  };
+  const fileName = fileByAlias[alias];
+  if (!fileName) {
+    throw new Error(`Unsupported benchmark for workload load: ${benchmark}`);
+  }
+
+  const sourcePath = `${WEB_DATA_BASE}/workloads/${alias}/${fileName}`;
+  const rows = parseJsonl(await fetchText(sourcePath));
+  const queries = {};
+
+  rows.forEach((obj) => {
+    const key = queryKey(obj);
+    if (!key) return;
+    queries[key] ||= {};
+    if (typeof obj.sql === 'string' && obj.sql) queries[key].sql = obj.sql;
+    const actual = numericValue(obj.actual, obj.act, obj.actual_cardinality, obj.true_cardinality, obj.ground_truth);
+    if (actual !== null) queries[key].actual = actual;
+  });
+
+  return { ok: true, sourcePath, queries };
+}
+
+function soCebXboundFileName(xboundParams) {
+  const parts = Number(xboundParams?.parts);
+  const l0Theta = Number(xboundParams?.l0Theta);
+  const hhTheta = Number(xboundParams?.hhTheta);
+  if (!Number.isFinite(parts) || !Number.isFinite(l0Theta) || !Number.isFinite(hhTheta)) {
+    return 'xbound::so_full_ceb-queries00_host=hausberg_parts=16_ns=1_ub=0_l0-theta=8_hh-theta=12_mcv=1024.jsonl';
+  }
+  return `xbound::so_full_ceb-queries00_host=hausberg_parts=${Math.trunc(parts)}_ns=1_ub=0_l0-theta=${Math.trunc(l0Theta)}_hh-theta=${Math.trunc(hhTheta)}_mcv=1024.jsonl`;
+}
+
+async function loadPrecomputedEstimatesWeb(benchmark, xboundParams) {
+  const alias = benchmarkSlug(benchmark);
+  const dirPath = `${WEB_DATA_BASE}/est/${alias}`;
+  const systemFilesByAlias = {
+    joblight: [
+      'duckdb::joblight-queries.jsonl',
+      'postgres::joblight-queries.jsonl',
+      'dw::joblight-queries.jsonl',
+      'xbound::joblight-queries_host=hausberg_parts=16_ns=1_ub=0_l0-theta=8_hh-theta=12_mcv=1024.jsonl'
+    ],
+    so_full_ceb: [
+      'duckdb::so_full_ceb-queries00.jsonl',
+      'postgres::so_full_ceb-queries00.jsonl',
+      'dw::so_full_ceb-queries00.jsonl'
+    ],
+    stats_ceb: []
+  };
+
+  const files = [...(systemFilesByAlias[alias] || [])];
+  if (alias === 'so_full_ceb') {
+    files.push(soCebXboundFileName(xboundParams));
+  }
+
+  const queries = {};
+  const upsert = (obj) => {
+    const key = queryKey(obj);
+    if (!key) return null;
+    queries[key] ||= { estimates: {}, xbound: {} };
+    const entry = queries[key];
+    if (!entry.sql && typeof obj.sql === 'string') entry.sql = obj.sql;
+    if (!entry.actual) {
+      entry.actual = numericValue(obj.actual, obj.act, obj.actual_cardinality, obj.true_cardinality, obj.ground_truth);
+    }
+    return entry;
+  };
+
+  for (const fileName of files) {
+    const sourcePath = `${dirPath}/${fileName}`;
+    let text;
+    try {
+      text = await fetchText(sourcePath);
+    } catch (err) {
+      if (!(alias === 'so_full_ceb' && fileName.startsWith('xbound::'))) throw err;
+      const fallbackFile = 'xbound::so_full_ceb-queries00_host=hausberg_parts=16_ns=1_ub=0_l0-theta=8_hh-theta=12_mcv=1024.jsonl';
+      text = await fetchText(`${dirPath}/${fallbackFile}`);
+    }
+    const rows = parseJsonl(text);
+    rows.forEach((obj) => {
+      const entry = upsert(obj);
+      if (!entry) return;
+      if (fileName.startsWith('duckdb::')) {
+        const val = numericValue(obj.duckdb);
+        if (val !== null) entry.estimates.duckdb = val;
+      } else if (fileName.startsWith('postgres::')) {
+        const val = numericValue(obj.postgres);
+        if (val !== null) entry.estimates.postgres = val;
+      } else if (fileName.startsWith('dw::')) {
+        const val = numericValue(obj.dw);
+        if (val !== null) entry.estimates['fabric dw'] = val;
+      } else if (fileName.startsWith('xbound::')) {
+        const val = numericValue(obj.xbound, obj?.meta?.best?.val);
+        if (val !== null) {
+          entry.xbound.duckdb = val;
+          entry.xbound.postgres = val;
+          entry.xbound['fabric dw'] = val;
+        }
+      }
+    });
+  }
+  return { ok: true, sourcePath: dirPath, queries };
+}
 
 function normalizeSql(sql) {
   return String(sql || '')
@@ -643,46 +807,44 @@ async function ensureBenchmarkLoaded(benchmark) {
 
   const estimateLoader = window.xbound?.loadPrecomputedEstimates;
   const workloadLoader = window.xbound?.loadWorkloadQueries;
+  const workloadSource = typeof workloadLoader === 'function' ? workloadLoader : loadWorkloadQueriesWeb;
+  const estimateSource = typeof estimateLoader === 'function' ? estimateLoader : loadPrecomputedEstimatesWeb;
   queryStore[benchmark] ||= {};
 
   try {
-    if (typeof workloadLoader === 'function') {
-      const workloadResult = await workloadLoader(benchmark);
-      if (workloadResult?.ok && workloadResult.queries && typeof workloadResult.queries === 'object') {
-        if (String(benchmark).toLowerCase() === 'joblight') {
-          queryStore[benchmark] = {};
-        }
-        Object.entries(workloadResult.queries).forEach(([queryName, queryData]) => {
-          const canonicalName = canonicalQueryName(benchmark, queryName);
-          queryStore[benchmark][canonicalName] ||= { sql: '', actual: 0, estimates: {}, xbound: {} };
-          if (typeof queryData?.sql === 'string' && queryData.sql) {
-            queryStore[benchmark][canonicalName].sql = queryData.sql;
-          }
-        });
-        els.statusText.textContent = `Loaded workload queries from ${workloadResult.sourcePath}`;
+    const workloadResult = await workloadSource(benchmark);
+    if (workloadResult?.ok && workloadResult.queries && typeof workloadResult.queries === 'object') {
+      if (String(benchmark).toLowerCase() === 'joblight') {
+        queryStore[benchmark] = {};
       }
+      Object.entries(workloadResult.queries).forEach(([queryName, queryData]) => {
+        const canonicalName = canonicalQueryName(benchmark, queryName);
+        queryStore[benchmark][canonicalName] ||= { sql: '', actual: 0, estimates: {}, xbound: {} };
+        if (typeof queryData?.sql === 'string' && queryData.sql) {
+          queryStore[benchmark][canonicalName].sql = queryData.sql;
+        }
+      });
+      els.statusText.textContent = `Loaded workload queries from ${workloadResult.sourcePath}`;
     }
 
-    if (typeof estimateLoader === 'function') {
-      const estimateResult = await estimateLoader(benchmark, xboundParamOptionsForBenchmark(benchmark));
-      if (estimateResult?.ok && estimateResult.queries && typeof estimateResult.queries === 'object') {
-        Object.entries(estimateResult.queries).forEach(([queryName, queryData]) => {
-          const canonicalName = canonicalQueryName(benchmark, queryName);
-          const loaded = normalizeLoadedQuery(queryData);
-          if (!loaded) return;
+    const estimateResult = await estimateSource(benchmark, xboundParamOptionsForBenchmark(benchmark));
+    if (estimateResult?.ok && estimateResult.queries && typeof estimateResult.queries === 'object') {
+      Object.entries(estimateResult.queries).forEach(([queryName, queryData]) => {
+        const canonicalName = canonicalQueryName(benchmark, queryName);
+        const loaded = normalizeLoadedQuery(queryData);
+        if (!loaded) return;
 
-          queryStore[benchmark][canonicalName] ||= { sql: '', actual: 0, estimates: {}, xbound: {} };
-          const current = queryStore[benchmark][canonicalName];
-          queryStore[benchmark][canonicalName] = {
-            ...current,
-            sql: loaded.sql || current.sql,
-            actual: loaded.actual || current.actual,
-            estimates: { ...(current.estimates || {}), ...(loaded.estimates || {}) },
-            xbound: { ...(current.xbound || {}), ...(loaded.xbound || {}) }
-          };
-        });
-        els.statusText.textContent = `Loaded precomputed estimates from ${estimateResult.sourcePath}`;
-      }
+        queryStore[benchmark][canonicalName] ||= { sql: '', actual: 0, estimates: {}, xbound: {} };
+        const current = queryStore[benchmark][canonicalName];
+        queryStore[benchmark][canonicalName] = {
+          ...current,
+          sql: loaded.sql || current.sql,
+          actual: loaded.actual || current.actual,
+          estimates: { ...(current.estimates || {}), ...(loaded.estimates || {}) },
+          xbound: { ...(current.xbound || {}), ...(loaded.xbound || {}) }
+        };
+      });
+      els.statusText.textContent = `Loaded precomputed estimates from ${estimateResult.sourcePath}`;
     }
   } catch {
     // Keep mock data and stay silent on load failures.
@@ -777,6 +939,10 @@ function bindEvents() {
       }
       return;
     }
+    if (isCustom && !supportsCustomQuery) {
+      els.statusText.textContent = 'Custom query estimation is only available in the Electron app.';
+      return;
+    }
 
     customQueryData = null;
     renderQErrorBarPlot(activeEntries());
@@ -801,7 +967,7 @@ function bindEvents() {
 }
 
 async function init() {
-  els.appName.textContent = window.xbound?.appName || 'xBound';
+  els.appName.textContent = window.xbound?.appName || 'xBound (Web)';
   if (window.CodeMirror && els.sqlInput) {
     sqlEditor = window.CodeMirror.fromTextArea(els.sqlInput, {
       mode: 'text/x-sql',

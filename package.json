@@ -4,7 +4,8 @@
   "description": "VLDB26 xBound demo dashboard",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "build:web": "node scripts/build-web.js"
   },
   "devDependencies": {
     "electron": "^36.0.0"
