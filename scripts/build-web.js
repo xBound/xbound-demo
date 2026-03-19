@@ -30,6 +30,7 @@ async function copyDir(src, dest) {
 
 async function build() {
   await cleanDist();
+  // Cache-bust static assets: Chrome on GitHub Pages may keep stale JS/CSS across deploys.
   const buildVersion = (process.env.GITHUB_SHA || `${Date.now()}`).slice(0, 12);
 
   const srcIndexPath = path.join(ROOT, 'src', 'index.html');

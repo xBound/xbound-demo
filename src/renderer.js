@@ -37,7 +37,13 @@ const SYSTEM_COLORS = {
   xbound: '#D3D3D3'
 };
 const UI_FONT_FAMILY = '"Palatino Linotype", Palatino, "URW Palladio L", "Book Antiqua", serif';
-const ESTIMATE_FONT = `15px ${UI_FONT_FAMILY}`;
+const PLOT_FONT = {
+  estimatePx: IS_ELECTRON ? 15 : 17,
+  tickPx: IS_ELECTRON ? 12 : 14,
+  legendPx: IS_ELECTRON ? 14 : 16,
+  warningPx: IS_ELECTRON ? 13 : 15
+};
+const ESTIMATE_FONT = `${PLOT_FONT.estimatePx}px ${UI_FONT_FAMILY}`;
 const WEB_DATA_BASE = IS_ELECTRON ? './data/benchmarks' : `${WEB_BASE_PATH}data/benchmarks`;
 
 let queryStore = Object.fromEntries(BENCHMARKS.map((name) => [name, {}]));
@@ -476,7 +482,7 @@ function renderQErrorBarPlot(entries) {
     ctx.stroke();
 
     ctx.fillStyle = '#6b718c';
-    ctx.font = `12px ${UI_FONT_FAMILY}`;
+    ctx.font = `${PLOT_FONT.tickPx}px ${UI_FONT_FAMILY}`;
     if (Math.abs(tick) < 1e-9) ctx.fillText('1.00x', 8, yy + 4);
     else ctx.fillText(`${Math.abs(tick).toFixed(2)}x`, 8, yy + 4);
   });
@@ -500,13 +506,13 @@ function renderQErrorBarPlot(entries) {
   if (xboundOverlay) {
     if (xboundOverlay.unsupported) {
       ctx.fillStyle = '#a33a3a';
-      ctx.font = `13px ${UI_FONT_FAMILY}`;
+      ctx.font = `${PLOT_FONT.warningPx}px ${UI_FONT_FAMILY}`;
       const warningText = '⚠️ Query not supported in xBound';
       const textWidth = ctx.measureText(warningText).width;
       ctx.fillText(warningText, cssWidth - margin.right - textWidth - 4, margin.top - 12);
     } else if (xboundOverlay.zeroLowerBound) {
       ctx.fillStyle = '#a36a00';
-      ctx.font = `13px ${UI_FONT_FAMILY}`;
+      ctx.font = `${PLOT_FONT.warningPx}px ${UI_FONT_FAMILY}`;
       const warningText = '⚠️ Lower bound is 0';
       const textWidth = ctx.measureText(warningText).width;
       ctx.fillText(warningText, cssWidth - margin.right - textWidth - 4, margin.top - 12);
@@ -641,7 +647,7 @@ function loadSystemIcon(key) {
 function drawLegend(ctx, centerX, startY) {
   const keys = ['duckdb', 'postgres', 'fabric dw'];
 
-  ctx.font = `14px ${UI_FONT_FAMILY}`;
+  ctx.font = `${PLOT_FONT.legendPx}px ${UI_FONT_FAMILY}`;
   const iconSize = 22;
   const itemGap = 28;
   const iconGap = 8;
@@ -663,7 +669,7 @@ function drawLegend(ctx, centerX, startY) {
     }
 
     ctx.fillStyle = '#1f2a4d';
-    ctx.font = `14px ${UI_FONT_FAMILY}`;
+    ctx.font = `${PLOT_FONT.legendPx}px ${UI_FONT_FAMILY}`;
     ctx.fillText(label, x, startY + 18);
     x += ctx.measureText(label).width + itemGap;
   });
