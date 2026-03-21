@@ -24,6 +24,12 @@ const SYSTEM_ICON_PATHS = {
   'fabric dw': resolveAssetPath(`${ICON_BASE_PATH}/dw-icon.png`),
   xbound: resolveAssetPath(`${ICON_BASE_PATH}/xbound-icon.png`)
 };
+const SYSTEM_ICON_HEAD_SCALE = {
+  duckdb: 1.18,
+  postgres: 0.92,
+  'fabric dw': 0.9,
+  xbound: 0.94
+};
 const SYSTEM_LABELS = {
   duckdb: 'DuckDB',
   postgres: 'PostgreSQL',
@@ -281,6 +287,7 @@ async function loadPrecomputedEstimatesWeb(benchmark, xboundParams) {
     try {
       text = await fetchText(sourcePath);
     } catch (err) {
+      if (fileName.startsWith('dw::')) continue;
       if (!(alias === 'so_full_ceb' && fileName.startsWith('xbound::'))) throw err;
       const fallbackFile = 'xbound::so_full_ceb-queries00_host=hausberg_parts=16_ns=1_ub=0_l0-theta=8_hh-theta=12_mcv=1024.jsonl';
       text = await fetchText(`${dirPath}/${fallbackFile}`);
@@ -454,28 +461,43 @@ function renderQErrorBarPlot(entries) {
     ...entries.map((e) => Math.abs(e.signedQError || e.qError || 1)),
     Math.abs(xboundOverlay?.signedQError || 1)
   );
-  const domainMin = -maxAbsQ * 1.1;
-  const domainMax = maxAbsQ * 1.1;
+  const toSignedLog = (value) => {
+    const v = Number(value);
+    if (!Number.isFinite(v) || Math.abs(v) < 1) return 0;
+    return Math.sign(v) * Math.log10(Math.max(1, Math.abs(v)));
+  };
+  const maxAbsLog = Math.max(0.35, Math.log10(maxAbsQ) * 1.05);
+  const domainMin = -maxAbsLog;
+  const domainMax = maxAbsLog;
 
-  const y = (value) => {
-    const ratio = (value - domainMin) / (domainMax - domainMin);
+  const y = (signedQError) => {
+    const t = toSignedLog(signedQError);
+    const ratio = (t - domainMin) / (domainMax - domainMin);
     return margin.top + height - ratio * height;
   };
 
   const xStep = width / Math.max(1, SYSTEMS.length);
-  const barWidth = Math.min(42, xStep * 0.58);
+  const stemWidth = Math.max(4, Math.min(10, xStep * 0.13));
+  const iconHeadSize = Math.max(28, Math.min(44, xStep * 0.42));
   const entryBySystem = new Map(entries.map((entry) => [systemKeyForEntry(entry.system), entry]));
 
   ctx.clearRect(0, 0, cssWidth, cssHeight);
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, cssWidth, cssHeight);
 
-  const ticks = [domainMin, domainMin / 2, 0, domainMax / 2, domainMax];
+  const maxExp = Math.max(1, Math.ceil(Math.log10(maxAbsQ)));
+  const tickQs = [1];
+  for (let exp = 1; exp <= maxExp; exp += 1) tickQs.push(10 ** exp);
+  const ticks = [
+    ...tickQs.filter((q) => q > 1).map((q) => -q).reverse(),
+    1,
+    ...tickQs.filter((q) => q > 1)
+  ];
 
   ctx.strokeStyle = '#cdd6ea';
   ctx.lineWidth = 1;
   ticks.forEach((tick) => {
-    const yy = y(tick);
+    const yy = tick === 1 ? baselineY : y(tick);
     ctx.beginPath();
     ctx.moveTo(margin.left, yy);
     ctx.lineTo(cssWidth - margin.right, yy);
@@ -483,8 +505,10 @@ function renderQErrorBarPlot(entries) {
 
     ctx.fillStyle = '#6b718c';
     ctx.font = `${PLOT_FONT.tickPx}px ${UI_FONT_FAMILY}`;
-    if (Math.abs(tick) < 1e-9) ctx.fillText('1.00x', 8, yy + 4);
-    else ctx.fillText(`${Math.abs(tick).toFixed(2)}x`, 8, yy + 4);
+    const absTick = Math.abs(tick);
+    const exp = Math.round(Math.log10(absTick));
+    const tickLabel = `10^${exp}x`;
+    ctx.fillText(tickLabel, 8, yy + 4);
   });
 
   ctx.strokeStyle = '#1e2b54';
@@ -555,37 +579,57 @@ function renderQErrorBarPlot(entries) {
     if (!entry) return;
     const centerX = margin.left + xStep * idx + xStep / 2;
     const barTop = y(entry.signedQError || entry.qError);
-    const barHeight = Math.abs(barTop - baselineY);
     const isXBound = entry.system.includes(XBOUND_SUFFIX);
     const colorKey = isXBound ? 'xbound' : systemKeyForEntry(entry.system);
     const accent = SYSTEM_COLORS[colorKey] || '#1461ff';
+    const icon = loadSystemIcon(colorKey);
+    const stemY1 = Math.min(barTop, baselineY);
+    const stemY2 = Math.max(barTop, baselineY);
 
     ctx.fillStyle = accent;
-    ctx.globalAlpha = 0.25;
-    const barY1 = Math.min(barTop, baselineY);
-    const barY2 = Math.max(barTop, baselineY);
-    ctx.fillRect(centerX - barWidth / 2, barY1, barWidth, Math.max(1, barHeight));
+    ctx.globalAlpha = 0.35;
+    ctx.fillRect(centerX - stemWidth / 2, stemY1, stemWidth, Math.max(1, stemY2 - stemY1));
     ctx.globalAlpha = 1;
 
     if (xboundOverlay && !xboundOverlay.unsupported && !xboundOverlay.zeroLowerBound && Number.isFinite(xboundOverlay.estimate) && entry.estimate < xboundOverlay.estimate) {
       const lineY = y(xboundOverlay.signedQError);
-      const overflowTop = Math.max(lineY, barY1);
-      const overflowBottom = barY2;
+      const overflowTop = Math.max(lineY, stemY1);
+      const overflowBottom = stemY2;
       if (overflowBottom > overflowTop) {
         ctx.fillStyle = '#ff4d4f';
-        ctx.globalAlpha = 0.5;
-        ctx.fillRect(centerX - barWidth / 2, overflowTop, barWidth, overflowBottom - overflowTop);
+        ctx.globalAlpha = 0.75;
+        ctx.fillRect(centerX - stemWidth / 2, overflowTop, stemWidth, overflowBottom - overflowTop);
         ctx.globalAlpha = 1;
       }
     }
 
     ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(centerX - barWidth / 2, Math.min(barTop, baselineY), barWidth, Math.max(1, barHeight));
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(centerX - stemWidth / 2, stemY1, stemWidth, Math.max(1, stemY2 - stemY1));
+
+    // Icon-only lollipop head (no circular container).
+    ctx.save();
+    if (icon && icon._xboundState === 'ready' && icon.complete && icon.naturalWidth > 0) {
+      const iconScale = SYSTEM_ICON_HEAD_SCALE[colorKey] || 0.95;
+      const iconSize = iconHeadSize * iconScale;
+      ctx.drawImage(icon, centerX - iconSize / 2, barTop - iconSize / 2, iconSize, iconSize);
+    } else {
+      ctx.beginPath();
+      ctx.arc(centerX, barTop, iconHeadSize * 0.28, 0, Math.PI * 2);
+      ctx.closePath();
+      ctx.fillStyle = accent;
+      ctx.globalAlpha = 0.92;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    ctx.restore();
 
     ctx.fillStyle = '#1f2a4d';
     ctx.font = ESTIMATE_FONT;
-    const qLabelY = (entry.signedQError || entry.qError) >= 0 ? barTop - 6 : barTop + 15;
+    const qLabelY = (entry.signedQError || entry.qError) >= 0
+      ? barTop - iconHeadSize / 2 - 10
+      : barTop + iconHeadSize / 2 + 18;
     const estimateLabel = Number.isFinite(entry.estimate)
       ? formatCardinality(entry.estimate)
       : String(entry.estimate);
