@@ -1,7 +1,7 @@
-const SYSTEMS = ['duckdb', 'postgres', 'fabric dw'];
 const XBOUND_SUFFIX = ' xBound-ed';
 const BENCHMARKS = ['JOBlight', 'SO-CEB', 'STATS-CEB'];
 const IS_ELECTRON = typeof window.xbound !== 'undefined';
+const SYSTEMS = IS_ELECTRON ? ['duckdb', 'postgres', 'fabric dw'] : ['duckdb', 'postgres'];
 function webBasePath() {
   const pathname = window.location.pathname || '/';
   if (pathname.endsWith('/')) return pathname;
@@ -689,7 +689,7 @@ function loadSystemIcon(key) {
 }
 
 function drawLegend(ctx, centerX, startY) {
-  const keys = ['duckdb', 'postgres', 'fabric dw'];
+  const keys = SYSTEMS;
 
   ctx.font = `${PLOT_FONT.legendPx}px ${UI_FONT_FAMILY}`;
   const iconSize = 22;
