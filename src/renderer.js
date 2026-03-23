@@ -650,16 +650,27 @@ function renderQErrorBarPlot(entries) {
 
     ctx.restore();
 
-    ctx.fillStyle = '#1f2a4d';
     ctx.font = ESTIMATE_FONT;
     const qLabelY = (entry.signedQError || entry.qError) >= 0
       ? barTop - iconHeadSize / 2 - 10
       : barTop + iconHeadSize / 2 + 18;
+    const arrowLabel = (entry.signedQError || entry.qError) >= 0 ? '↑ ' : '↓ ';
+    const qErrorLabel = Number.isFinite(entry.qError)
+      ? `${Math.round(entry.qError)}x`
+      : String(entry.qError);
     const estimateLabel = Number.isFinite(entry.estimate)
       ? formatCardinality(entry.estimate)
       : String(entry.estimate);
-    const estimateLabelWidth = ctx.measureText(estimateLabel).width;
-    ctx.fillText(estimateLabel, centerX - estimateLabelWidth / 2, qLabelY);
+    const estimateWithParens = ` (${estimateLabel})`;
+    const arrowWidth = ctx.measureText(arrowLabel).width;
+    const qErrorWidth = ctx.measureText(qErrorLabel).width;
+    const estimateWidth = ctx.measureText(estimateWithParens).width;
+    const labelStartX = centerX - (arrowWidth + qErrorWidth + estimateWidth) / 2;
+    ctx.fillStyle = '#000000';
+    ctx.fillText(arrowLabel, labelStartX, qLabelY);
+    ctx.fillText(qErrorLabel, labelStartX + arrowWidth, qLabelY);
+    ctx.fillStyle = '#808080';
+    ctx.fillText(estimateWithParens, labelStartX + arrowWidth + qErrorWidth, qLabelY);
 
     const hasComparableLowerBound = Boolean(
       xboundOverlay &&
