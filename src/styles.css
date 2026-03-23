@@ -228,7 +228,7 @@ body {
 .xbound-params input[type="range"] {
   height: 24px;
   padding: 0;
-  accent-color: var(--accent);
+  accent-color: #8f96aa;
   cursor: pointer;
 }
 
@@ -290,9 +290,9 @@ body {
   height: 14px;
   border-radius: 999px;
   border: 2px solid #fff;
-  background: var(--accent);
+  background: #8f96aa;
   margin-top: -5px;
-  box-shadow: 0 0 0 1px rgba(20, 97, 255, 0.2);
+  box-shadow: 0 0 0 1px rgba(143, 150, 170, 0.35);
 }
 
 .xbound-slider-group input[type="range"]::-moz-range-track {
@@ -306,8 +306,8 @@ body {
   height: 14px;
   border-radius: 999px;
   border: 2px solid #fff;
-  background: var(--accent);
-  box-shadow: 0 0 0 1px rgba(20, 97, 255, 0.2);
+  background: #8f96aa;
+  box-shadow: 0 0 0 1px rgba(143, 150, 170, 0.35);
 }
 
 .xbound-params.disabled {
