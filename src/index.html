@@ -52,14 +52,38 @@
               <img src="../icons/xbound-icon.png" alt="xBound" class="xbound-title-icon" />
               xBound: Parameters
             </h3>
-            <label for="xboundParts">Number of partitions</label>
-            <input id="xboundParts" type="number" min="1" step="1" value="16" />
+            <label for="xboundParts">Number of partitions: <strong id="xboundPartsValue">16</strong></label>
+            <div class="xbound-slider-group">
+              <input id="xboundParts" type="range" min="0" max="3" step="1" value="2" data-values="4,8,16,32" />
+              <div class="xbound-slider-ticks" aria-hidden="true">
+                <span><i></i><em>4</em></span>
+                <span><i></i><em>8</em></span>
+                <span><i></i><em>16</em></span>
+                <span><i></i><em>32</em></span>
+              </div>
+            </div>
 
-            <label for="xboundL0Theta"><code>ThetaSketch</code> precision of <code>l_0</code> stats</label>
-            <input id="xboundL0Theta" type="number" min="0" step="1" value="8" />
+            <label for="xboundL0Theta"><code>ThetaSketch</code> precision of <code>l_0</code> stats: <strong id="xboundL0ThetaValue">8</strong></label>
+            <div class="xbound-slider-group">
+              <input id="xboundL0Theta" type="range" min="0" max="3" step="1" value="1" data-values="5,8,12,16" />
+              <div class="xbound-slider-ticks" aria-hidden="true">
+                <span><i></i><em>5</em></span>
+                <span><i></i><em>8</em></span>
+                <span><i></i><em>12</em></span>
+                <span><i></i><em>16</em></span>
+              </div>
+            </div>
 
-            <label for="xboundHhTheta"><code>ThetaSketch</code> precision of heavy partition stats</label>
-            <input id="xboundHhTheta" type="number" min="0" step="1" value="12" />
+            <label for="xboundHhTheta"><code>ThetaSketch</code> precision of heavy partition stats: <strong id="xboundHhThetaValue">12</strong></label>
+            <div class="xbound-slider-group">
+              <input id="xboundHhTheta" type="range" min="0" max="3" step="1" value="2" data-values="5,8,12,16" />
+              <div class="xbound-slider-ticks" aria-hidden="true">
+                <span><i></i><em>5</em></span>
+                <span><i></i><em>8</em></span>
+                <span><i></i><em>12</em></span>
+                <span><i></i><em>16</em></span>
+              </div>
+            </div>
           </div>
         </section>
 

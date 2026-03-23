@@ -138,6 +138,9 @@ const els = {
   xboundParts: document.getElementById('xboundParts'),
   xboundL0Theta: document.getElementById('xboundL0Theta'),
   xboundHhTheta: document.getElementById('xboundHhTheta'),
+  xboundPartsValue: document.getElementById('xboundPartsValue'),
+  xboundL0ThetaValue: document.getElementById('xboundL0ThetaValue'),
+  xboundHhThetaValue: document.getElementById('xboundHhThetaValue'),
   planSystemSelect: document.getElementById('planSystemSelect'),
   planControls: document.getElementById('planControls'),
   runBtn: document.getElementById('runBtn'),
@@ -903,9 +906,9 @@ function canonicalQueryName(benchmark, queryName) {
 function xboundParamOptionsForBenchmark(benchmark) {
   if (String(benchmark).toLowerCase() === 'so-ceb') {
     return {
-      parts: Number(els.xboundParts?.value || 16),
-      l0Theta: Number(els.xboundL0Theta?.value || 8),
-      hhTheta: Number(els.xboundHhTheta?.value || 12)
+      parts: discreteSliderValue(els.xboundParts, 16),
+      l0Theta: discreteSliderValue(els.xboundL0Theta, 8),
+      hhTheta: discreteSliderValue(els.xboundHhTheta, 12)
     };
   }
   return null;
@@ -918,6 +921,34 @@ function xboundParamCacheKey(benchmark) {
 
 function updateXboundParamsState() {
   if (!els.xboundParams) return;
+}
+
+function discreteSliderValue(el, fallback) {
+  if (!el) return fallback;
+  const rawValues = String(el.dataset.values || '')
+    .split(',')
+    .map((v) => Number(v.trim()))
+    .filter((v) => Number.isFinite(v));
+  if (rawValues.length === 0) {
+    const direct = Number(el.value);
+    return Number.isFinite(direct) ? direct : fallback;
+  }
+  const idx = Number(el.value);
+  if (!Number.isFinite(idx)) return fallback;
+  const clamped = Math.max(0, Math.min(rawValues.length - 1, Math.trunc(idx)));
+  return rawValues[clamped];
+}
+
+function syncXboundSliderLabels() {
+  if (els.xboundPartsValue) {
+    els.xboundPartsValue.textContent = String(discreteSliderValue(els.xboundParts, 16));
+  }
+  if (els.xboundL0ThetaValue) {
+    els.xboundL0ThetaValue.textContent = String(discreteSliderValue(els.xboundL0Theta, 8));
+  }
+  if (els.xboundHhThetaValue) {
+    els.xboundHhThetaValue.textContent = String(discreteSliderValue(els.xboundHhTheta, 12));
+  }
 }
 
 async function ensureBenchmarkLoaded(benchmark) {
@@ -992,6 +1023,9 @@ function bindEvents() {
 
   [els.xboundParts, els.xboundL0Theta, els.xboundHhTheta].forEach((el) => {
     if (!el) return;
+    el.addEventListener('input', () => {
+      syncXboundSliderLabels();
+    });
     el.addEventListener('change', async () => {
       if (els.benchmarkSelect.value !== 'SO-CEB') return;
       customQueryData = null;
@@ -1113,6 +1147,7 @@ async function init() {
     await ensureBenchmarkLoaded('SO-CEB');
     await ensureBenchmarkLoaded('STATS-CEB');
     populateSelectors();
+    syncXboundSliderLabels();
     updateXboundParamsState();
     bindEvents();
     setMode('run');
