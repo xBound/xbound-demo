@@ -103,6 +103,11 @@ body {
   border-color: transparent;
 }
 
+#leaderboardBtn {
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
 .sql-content {
   padding: 12px 14px;
   display: flex;
@@ -402,15 +407,256 @@ option {
 
 .leaderboard-list {
   margin: 8px 0 0;
-  padding-left: 22px;
+  display: grid;
+  gap: 12px;
 }
 
-.leaderboard-list li {
-  margin: 7px 0;
+.leaderboard-summary {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.leaderboard-section-title {
+  margin: 2px 0 0;
+  font-size: 0.9rem;
+  color: #2a3151;
+}
+
+.leaderboard-tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.leaderboard-tab-btn {
+  border: 1px solid #d8dbe8;
+  background: #fff;
+  color: #4a5168;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.leaderboard-tab-btn.active {
+  background: #eef1f8;
+  border-color: #c8cee0;
+  color: #2d3550;
+}
+
+.leaderboard-podium {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 10px;
+  min-height: 230px;
+  padding: 6px 0 2px;
+}
+
+.podium-card {
+  width: min(180px, 31%);
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 0 0 2px;
+}
+
+.podium-top {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: #fff;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 8px 8px 10px;
+}
+
+.podium-step {
+  width: 100%;
+  border: 1px solid #d5d9e9;
+  border-radius: 3px 3px 0 0;
+  background: #eef1f8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: #3a425b;
+}
+
+.podium-card.rank-1 .podium-step {
+  height: 88px;
+  background: #e4e9f7;
+}
+
+.podium-card.rank-2 .podium-step {
+  height: 64px;
+}
+
+.podium-card.rank-3 .podium-step {
+  height: 44px;
+}
+
+.podium-rank {
+  font-size: 0.86rem;
+  color: var(--muted);
+}
+
+.podium-icon {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+}
+
+.leaderboard-icon-ed {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.leaderboard-icon-ed .podium-icon {
+  width: 26px;
+  height: 26px;
+}
+
+.icon-plus {
+  font-size: 0.9rem;
+  line-height: 1;
+  color: #4b5269;
+}
+
+.podium-name {
+  font-weight: 700;
+  font-size: 0.87rem;
+  text-align: center;
+}
+
+.podium-score,
+.podium-meta {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.leaderboard-table {
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.leaderboard-row {
+  display: grid;
+  grid-template-columns: 44px minmax(150px, 1.4fr) 1fr 1.2fr 88px;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  background: #fff;
+  border-bottom: 1px solid #ececf0;
+}
+
+.leaderboard-row:last-child {
+  border-bottom: 0;
+}
+
+.leaderboard-col {
+  font-size: 0.82rem;
+}
+
+.leaderboard-col.rank {
+  font-weight: 700;
+}
+
+.leaderboard-col.system {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.variant-chip {
+  display: inline-block;
+  border: 1px solid #d6d9e6;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  color: #4b5269;
+  background: #f7f8fc;
+}
+
+.variant-chip-combo {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.variant-chip-icon {
+  width: 12px;
+  height: 12px;
+  object-fit: contain;
+}
+
+.quality-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.quality-card {
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: #fff;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.quality-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 0.86rem;
+}
+
+.quality-variants {
+  display: grid;
+  gap: 6px;
+}
+
+.quality-variant {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.8rem;
+}
+
+.quality-improvement {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.leaderboard-system-icon {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
 }
 
 .hidden {
   display: none;
+}
+
+.app-shell.leaderboard-mode .controls-panel {
+  grid-column: 1 / 2;
+  grid-row: 1 / 2;
+}
+
+.app-shell.leaderboard-mode .xbound-panel {
+  grid-column: 2 / 3;
+  grid-row: 1 / 2;
+}
+
+.app-shell.leaderboard-mode #leaderboardPanel {
+  grid-column: 1 / 3;
+  grid-row: 2 / 3;
 }
 
 @media (max-width: 1080px) {
@@ -449,5 +695,14 @@ option {
   .chart-panel {
     grid-column: auto;
     grid-row: auto;
+  }
+
+  .leaderboard-row {
+    grid-template-columns: 34px minmax(120px, 1fr);
+    gap: 6px 10px;
+  }
+
+  .quality-cards {
+    grid-template-columns: 1fr;
   }
 }

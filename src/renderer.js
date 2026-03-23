@@ -129,9 +129,12 @@ const MOCK_PLAN_JSON = {
 };
 
 const els = {
+  appShell: document.querySelector('.app-shell'),
   appName: document.getElementById('appName'),
+  sqlPanel: document.querySelector('.sql-panel'),
   benchmarkSelect: document.getElementById('benchmarkSelect'),
   querySelect: document.getElementById('querySelect'),
+  queryControls: document.getElementById('queryControls'),
   sqlInput: document.getElementById('sqlInput'),
   statusText: document.getElementById('statusText'),
   xboundParams: document.getElementById('xboundParams'),
@@ -157,6 +160,7 @@ const els = {
 let currentMode = 'run';
 let sqlEditor = null;
 const supportsCustomQuery = typeof window.xbound?.estimateCustomQuery === 'function';
+let leaderboardTab = 'sanity';
 
 function benchmarkSlug(benchmark) {
   const b = String(benchmark || '').trim().toLowerCase();
@@ -793,15 +797,288 @@ function renderPlanTree(system) {
   els.planTree.appendChild(root);
 }
 
-function renderLeaderboard(entries) {
-  const ranked = [...entries].sort((a, b) => Math.abs(a.qError - 1) - Math.abs(b.qError - 1));
+function median(nums) {
+  if (!Array.isArray(nums) || nums.length === 0) return null;
+  const sorted = [...nums].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) return sorted[mid];
+  return (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+function estimateForSystem(queryData, system) {
+  const estimate = Number(queryData?.estimates?.[system]);
+  return Number.isFinite(estimate) && estimate > 0 ? estimate : null;
+}
+
+function lowerBoundForSystem(queryData, system) {
+  const lb = Number(queryData?.xbound?.[system]);
+  return Number.isFinite(lb) && lb > 0 ? lb : null;
+}
+
+function buildBenchmarkLeaderboardMetrics(benchmark) {
+  const sanity = new Map(
+    SYSTEMS.map((system) => [system, { system, checks: 0, violations: 0, violationRatios: [] }])
+  );
+  const quality = new Map(
+    SYSTEMS.flatMap((system) => ([
+      [system, { system, clipped: false, qErrors: [] }],
+      [`${system}::xbounded`, { system, clipped: true, qErrors: [] }]
+    ]))
+  );
+
+  Object.values(queryStore[benchmark] || {}).forEach((queryData) => {
+    const actual = Number(queryData?.actual);
+    if (!Number.isFinite(actual) || actual <= 0) return;
+
+    SYSTEMS.forEach((system) => {
+      const estimate = estimateForSystem(queryData, system);
+      if (!Number.isFinite(estimate)) return;
+      const lb = lowerBoundForSystem(queryData, system);
+
+      if (Number.isFinite(lb)) {
+        const sanityRow = sanity.get(system);
+        sanityRow.checks += 1;
+        if (estimate < lb) {
+          sanityRow.violations += 1;
+          sanityRow.violationRatios.push(lb / estimate);
+        }
+      }
+
+      const rawQ = Math.max(estimate / actual, actual / estimate);
+      const rawRow = quality.get(system);
+      rawRow.qErrors.push(rawQ);
+
+      const clippedEstimate = Number.isFinite(lb) ? Math.max(estimate, lb) : estimate;
+      const clippedQ = Math.max(clippedEstimate / actual, actual / clippedEstimate);
+      const clippedRow = quality.get(`${system}::xbounded`);
+      clippedRow.qErrors.push(clippedQ);
+    });
+  });
+
+  const sanityRows = [...sanity.values()]
+    .filter((row) => row.checks > 0)
+    .map((row) => {
+      const violationRate = row.checks > 0 ? row.violations / row.checks : 0;
+      const medianSeverity = row.violationRatios.length ? median(row.violationRatios) : 1;
+      return {
+        system: row.system,
+        label: SYSTEM_LABELS[row.system] || row.system,
+        icon: SYSTEM_ICON_PATHS[row.system] || null,
+        checks: row.checks,
+        violations: row.violations,
+        violationRate,
+        medianSeverity
+      };
+    })
+    .sort((a, b) => (a.violationRate - b.violationRate) || (a.medianSeverity - b.medianSeverity));
+
+  const qualityRows = [...quality.values()]
+    .filter((row) => row.qErrors.length > 0)
+    .map((row) => ({
+      system: row.system,
+      clipped: row.clipped,
+      label: row.clipped
+        ? `-ed ${SYSTEM_LABELS[row.system] || row.system}`
+        : (SYSTEM_LABELS[row.system] || row.system),
+      shortLabel: row.clipped ? '-ed' : 'raw',
+      icon: SYSTEM_ICON_PATHS[row.system] || null,
+      queries: row.qErrors.length,
+      score: median(row.qErrors),
+      medianQError: median(row.qErrors)
+    }))
+    .filter((row) => Number.isFinite(row.score))
+    .sort((a, b) => a.score - b.score);
+
+  return { sanityRows, qualityRows };
+}
+
+function leaderboardVariantIconMarkup(system, clipped, label) {
+  const systemIcon = SYSTEM_ICON_PATHS[system] || '';
+  if (!clipped) {
+    return `<img class="podium-icon" src="${systemIcon}" alt="${label}" />`;
+  }
+  const xboundIcon = SYSTEM_ICON_PATHS.xbound || '';
+  return `
+    <span class="leaderboard-icon-ed" aria-label="${label}">
+      <img class="podium-icon icon-system" src="${systemIcon}" alt="${label}" />
+      <span class="icon-plus">+</span>
+      <img class="podium-icon icon-xbound" src="${xboundIcon}" alt="xBound" />
+    </span>
+  `;
+}
+
+function renderLeaderboard() {
+  const benchmark = els.benchmarkSelect.value;
+  const { sanityRows, qualityRows } = buildBenchmarkLeaderboardMetrics(benchmark);
 
   els.leaderboardList.innerHTML = '';
-  ranked.forEach((entry) => {
-    const li = document.createElement('li');
-    li.textContent = `${entry.system}: q-error ${entry.qError.toFixed(2)}x (estimate ${formatCardinality(entry.estimate)}, actual ${formatCardinality(entry.actual)})`;
-    els.leaderboardList.appendChild(li);
+  if (sanityRows.length === 0 && qualityRows.length === 0) {
+    els.leaderboardList.textContent = 'No benchmark-wide estimates available yet.';
+    return;
+  }
+
+  const summary = document.createElement('p');
+  summary.className = 'leaderboard-summary';
+  summary.textContent = `Benchmark: ${benchmark}. Sanity = lower-bound violations. Quality = median q-error (lower is better).`;
+  els.leaderboardList.appendChild(summary);
+
+  const tabs = document.createElement('div');
+  tabs.className = 'leaderboard-tabs';
+  const sanityTabBtn = document.createElement('button');
+  sanityTabBtn.className = `leaderboard-tab-btn${leaderboardTab === 'sanity' ? ' active' : ''}`;
+  sanityTabBtn.textContent = 'Sanity';
+  sanityTabBtn.addEventListener('click', () => {
+    leaderboardTab = 'sanity';
+    renderLeaderboard();
   });
+  const qerrorTabBtn = document.createElement('button');
+  qerrorTabBtn.className = `leaderboard-tab-btn${leaderboardTab === 'qerror' ? ' active' : ''}`;
+  qerrorTabBtn.textContent = 'Q-error';
+  qerrorTabBtn.addEventListener('click', () => {
+    leaderboardTab = 'qerror';
+    renderLeaderboard();
+  });
+  tabs.appendChild(sanityTabBtn);
+  tabs.appendChild(qerrorTabBtn);
+  els.leaderboardList.appendChild(tabs);
+
+  if (leaderboardTab === 'sanity' && sanityRows.length > 0) {
+    const sanityTitle = document.createElement('h3');
+    sanityTitle.className = 'leaderboard-section-title';
+    sanityTitle.textContent = 'Sanity Ranking';
+    els.leaderboardList.appendChild(sanityTitle);
+
+    const sanityPodium = document.createElement('div');
+    sanityPodium.className = 'leaderboard-podium';
+    const sanityPodiumOrder = [1, 0, 2];
+    sanityPodiumOrder.forEach((idx) => {
+      const row = sanityRows[idx];
+      if (!row) return;
+      const card = document.createElement('div');
+      card.className = `podium-card rank-${idx + 1}`;
+      card.innerHTML = `
+        <div class="podium-top">
+          <img class="podium-icon" src="${row.icon || ''}" alt="${row.label}" />
+          <div class="podium-score">${(row.violationRate * 100).toFixed(1)}% violations</div>
+          <div class="podium-meta">severity ${row.medianSeverity.toFixed(2)}x</div>
+        </div>
+        <div class="podium-step">#${idx + 1}</div>
+      `;
+      sanityPodium.appendChild(card);
+    });
+    els.leaderboardList.appendChild(sanityPodium);
+
+    const sanityTable = document.createElement('div');
+    sanityTable.className = 'leaderboard-table';
+    sanityRows.forEach((row, idx) => {
+      const item = document.createElement('div');
+      item.className = 'leaderboard-row';
+      item.innerHTML = `
+        <div class="leaderboard-col rank">${idx + 1}</div>
+        <div class="leaderboard-col system">
+          <img class="leaderboard-system-icon" src="${row.icon || ''}" alt="${row.label}" />
+          <span>${row.label}</span>
+        </div>
+        <div class="leaderboard-col">${(row.violationRate * 100).toFixed(1)}% violations</div>
+        <div class="leaderboard-col">median severity ${row.medianSeverity.toFixed(2)}x</div>
+        <div class="leaderboard-col">${row.violations}/${row.checks}</div>
+      `;
+      sanityTable.appendChild(item);
+    });
+    els.leaderboardList.appendChild(sanityTable);
+  }
+
+  if (leaderboardTab === 'qerror' && qualityRows.length > 0) {
+    const qualityTitle = document.createElement('h3');
+    qualityTitle.className = 'leaderboard-section-title';
+    qualityTitle.textContent = 'Quality Ranking (Raw + xBound-ed)';
+    els.leaderboardList.appendChild(qualityTitle);
+
+    const podium = document.createElement('div');
+    podium.className = 'leaderboard-podium';
+    const podiumOrder = [1, 0, 2];
+    podiumOrder.forEach((idx) => {
+      const row = qualityRows[idx];
+      if (!row) return;
+      const card = document.createElement('div');
+      card.className = `podium-card rank-${idx + 1}`;
+      card.innerHTML = `
+        <div class="podium-top">
+          ${leaderboardVariantIconMarkup(row.system, row.clipped, row.label)}
+          <div class="podium-score">median q-error ${row.score.toFixed(2)}x</div>
+          <div class="podium-meta">${row.queries} queries</div>
+        </div>
+        <div class="podium-step">#${idx + 1}</div>
+      `;
+      podium.appendChild(card);
+    });
+    els.leaderboardList.appendChild(podium);
+
+    const bySystem = new Map(SYSTEMS.map((system) => [system, { raw: null, clipped: null }]));
+    qualityRows.forEach((row) => {
+      const holder = bySystem.get(row.system);
+      if (!holder) return;
+      if (row.clipped) holder.clipped = row;
+      else holder.raw = row;
+    });
+
+    const qualityCards = document.createElement('div');
+    qualityCards.className = 'quality-cards';
+    SYSTEMS.forEach((system) => {
+      const pack = bySystem.get(system);
+      if (!pack || (!pack.raw && !pack.clipped)) return;
+      const label = SYSTEM_LABELS[system] || system;
+      const icon = SYSTEM_ICON_PATHS[system] || '';
+      const rawText = pack.raw
+        ? `median q-error ${pack.raw.medianQError.toFixed(2)}x`
+        : 'no data';
+      const clippedText = pack.clipped
+        ? `median q-error ${pack.clipped.medianQError.toFixed(2)}x`
+        : 'no data';
+      const improvement = (pack.raw && pack.clipped)
+        ? `${(((pack.raw.medianQError - pack.clipped.medianQError) / pack.raw.medianQError) * 100).toFixed(1)}% improvement`
+        : 'insufficient data';
+
+      const card = document.createElement('div');
+      card.className = 'quality-card';
+      card.innerHTML = `
+        <div class="quality-card-header">
+          <img class="leaderboard-system-icon" src="${icon}" alt="${label}" />
+          <span>${label}</span>
+        </div>
+        <div class="quality-variants">
+          <div class="quality-variant">
+            <span class="variant-chip">raw</span>
+            <span>${rawText}</span>
+          </div>
+          <div class="quality-variant">
+            <span class="variant-chip variant-chip-combo">
+              <img class="variant-chip-icon" src="${SYSTEM_ICON_PATHS.xbound || ''}" alt="xBound" />
+              <span>-ed</span>
+              <img class="variant-chip-icon" src="${icon}" alt="${label}" />
+            </span>
+            <span>${clippedText}</span>
+          </div>
+        </div>
+        <div class="quality-improvement">${improvement}</div>
+      `;
+      qualityCards.appendChild(card);
+    });
+    els.leaderboardList.appendChild(qualityCards);
+  }
+
+  if (leaderboardTab === 'sanity' && sanityRows.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'leaderboard-summary';
+    empty.textContent = 'No sanity data available for this benchmark.';
+    els.leaderboardList.appendChild(empty);
+  }
+  if (leaderboardTab === 'qerror' && qualityRows.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'leaderboard-summary';
+    empty.textContent = 'No q-error data available for this benchmark.';
+    els.leaderboardList.appendChild(empty);
+  }
 }
 
 function activeEntries() {
@@ -816,19 +1093,22 @@ function getSqlText() {
 function setMode(mode) {
   currentMode = mode;
   els.runBtn.classList.toggle('active', mode === 'run');
-  els.planViewBtn.classList.toggle('active', mode === 'plan');
+  if (els.planViewBtn) els.planViewBtn.classList.toggle('active', mode === 'plan');
   els.leaderboardBtn.classList.toggle('active', mode === 'leaderboard');
 
   els.runPanel.classList.toggle('hidden', mode !== 'run');
   els.planPanel.classList.toggle('hidden', mode !== 'plan');
   els.leaderboardPanel.classList.toggle('hidden', mode !== 'leaderboard');
+  if (els.sqlPanel) els.sqlPanel.classList.toggle('hidden', mode === 'leaderboard');
+  if (els.appShell) els.appShell.classList.toggle('leaderboard-mode', mode === 'leaderboard');
 
   els.planControls.classList.toggle('hidden', mode !== 'plan');
+  if (els.queryControls) els.queryControls.classList.toggle('hidden', mode === 'leaderboard');
 
   const entries = activeEntries();
   if (mode === 'run') renderQErrorBarPlot(entries);
   if (mode === 'plan') renderPlanTree(els.planSystemSelect.value);
-  if (mode === 'leaderboard') renderLeaderboard(entries);
+  if (mode === 'leaderboard') renderLeaderboard();
 }
 
 function populateSelectors() {
@@ -1010,7 +1290,7 @@ function bindEvents() {
     updateQuerySelector();
     const entries = activeEntries();
     if (currentMode === 'run') renderQErrorBarPlot(entries);
-    if (currentMode === 'leaderboard') renderLeaderboard(entries);
+    if (currentMode === 'leaderboard') renderLeaderboard();
   });
 
   els.querySelect.addEventListener('change', () => {
@@ -1018,7 +1298,7 @@ function bindEvents() {
     syncSqlInput();
     const entries = activeEntries();
     if (currentMode === 'run') renderQErrorBarPlot(entries);
-    if (currentMode === 'leaderboard') renderLeaderboard(entries);
+    if (currentMode === 'leaderboard') renderLeaderboard();
   });
 
   [els.xboundParts, els.xboundL0Theta, els.xboundHhTheta].forEach((el) => {
@@ -1033,7 +1313,7 @@ function bindEvents() {
       updateQuerySelector();
       const entries = activeEntries();
       if (currentMode === 'run') renderQErrorBarPlot(entries);
-      if (currentMode === 'leaderboard') renderLeaderboard(entries);
+      if (currentMode === 'leaderboard') renderLeaderboard();
     });
   });
 
@@ -1103,15 +1383,17 @@ function bindEvents() {
     els.statusText.textContent = 'Q-error bars refreshed';
   });
 
-  els.planViewBtn.addEventListener('click', () => {
-    setMode('plan');
-    renderPlanTree(els.planSystemSelect.value);
-    els.statusText.textContent = 'Plan view generated from JSON';
-  });
+  if (els.planViewBtn) {
+    els.planViewBtn.addEventListener('click', () => {
+      setMode('plan');
+      renderPlanTree(els.planSystemSelect.value);
+      els.statusText.textContent = 'Plan view generated from JSON';
+    });
+  }
 
   els.leaderboardBtn.addEventListener('click', () => {
     setMode('leaderboard');
-    renderLeaderboard(activeEntries());
+    renderLeaderboard();
     els.statusText.textContent = 'Leaderboard updated';
   });
 

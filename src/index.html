@@ -18,9 +18,8 @@
       <main class="layout-grid">
         <section class="sql-panel card">
           <div class="left-actions">
-            <button id="runBtn" class="square-btn active">Run</button>
-            <button id="planViewBtn" class="square-btn">Plan</button>
-            <button id="leaderboardBtn" class="square-btn">Board</button>
+            <button id="runBtn" class="square-btn active" aria-label="Run" title="Run">▶</button>
+            <button id="leaderboardBtn" class="square-btn" aria-label="Leaderboard" title="Leaderboard">🏆</button>
           </div>
           <div class="sql-content">
             <div class="sql-editor-wrap">
@@ -37,8 +36,10 @@
           <label for="benchmarkSelect">Benchmark</label>
           <select id="benchmarkSelect"></select>
 
-          <label for="querySelect">Query</label>
-          <select id="querySelect"></select>
+          <div id="queryControls">
+            <label for="querySelect">Query</label>
+            <select id="querySelect"></select>
+          </div>
 
           <div id="planControls" class="plan-controls hidden">
             <label for="planSystemSelect">Plan system</label>
@@ -99,7 +100,7 @@
 
         <section class="chart-panel card hidden" id="leaderboardPanel">
           <h2>Leaderboard (Closest Q-Error to 1)</h2>
-          <ol id="leaderboardList" class="leaderboard-list"></ol>
+          <div id="leaderboardList" class="leaderboard-list"></div>
         </section>
       </main>
     </div>
