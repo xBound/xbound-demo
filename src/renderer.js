@@ -496,6 +496,26 @@ function renderQErrorBarPlot(entries) {
 
   ctx.strokeStyle = '#cdd6ea';
   ctx.lineWidth = 1;
+  const yTickLabelGap = 10;
+  const yAxisLabelGap = 14;
+  const expFont = `${Math.max(10, Math.round(PLOT_FONT.tickPx * 0.72))}px ${UI_FONT_FAMILY}`;
+  let maxTickLabelWidth = 0;
+  ticks.forEach((tick) => {
+    const absTick = Math.abs(tick);
+    const exp = Math.round(Math.log10(absTick));
+    const baseText = '10';
+    const expText = `${exp}`;
+    const suffixText = 'x';
+    ctx.font = `${PLOT_FONT.tickPx}px ${UI_FONT_FAMILY}`;
+    const baseWidth = ctx.measureText(baseText).width;
+    ctx.font = expFont;
+    const expWidth = ctx.measureText(expText).width;
+    ctx.font = `${PLOT_FONT.tickPx}px ${UI_FONT_FAMILY}`;
+    const suffixWidth = ctx.measureText(suffixText).width;
+    const totalLabelWidth = baseWidth + 1 + expWidth + 3 + suffixWidth;
+    if (totalLabelWidth > maxTickLabelWidth) maxTickLabelWidth = totalLabelWidth;
+  });
+
   ticks.forEach((tick) => {
     const yy = tick === 1 ? baselineY : y(tick);
     ctx.beginPath();
@@ -510,17 +530,34 @@ function renderQErrorBarPlot(entries) {
     const baseText = '10';
     const expText = `${exp}`;
     const suffixText = 'x';
-    const baseX = 8;
     const baseY = yy + 4;
-    ctx.fillText(baseText, baseX, baseY);
+    ctx.font = `${PLOT_FONT.tickPx}px ${UI_FONT_FAMILY}`;
     const baseWidth = ctx.measureText(baseText).width;
-    const expFont = `${Math.max(10, Math.round(PLOT_FONT.tickPx * 0.72))}px ${UI_FONT_FAMILY}`;
+    ctx.font = expFont;
+    const expWidth = ctx.measureText(expText).width;
+    ctx.font = `${PLOT_FONT.tickPx}px ${UI_FONT_FAMILY}`;
+    const suffixWidth = ctx.measureText(suffixText).width;
+    const totalLabelWidth = baseWidth + 1 + expWidth + 3 + suffixWidth;
+    const baseX = margin.left - yTickLabelGap - totalLabelWidth;
+
+    ctx.fillText(baseText, baseX, baseY);
     ctx.font = expFont;
     ctx.fillText(expText, baseX + baseWidth + 1, baseY - Math.max(6, Math.round(PLOT_FONT.tickPx * 0.45)));
-    const expWidth = ctx.measureText(expText).width;
     ctx.font = `${PLOT_FONT.tickPx}px ${UI_FONT_FAMILY}`;
     ctx.fillText(suffixText, baseX + baseWidth + expWidth + 3, baseY);
   });
+
+  const yLabelX = margin.left - yTickLabelGap - maxTickLabelWidth - yAxisLabelGap;
+  const yLabelY = margin.top + height / 2;
+  ctx.save();
+  ctx.translate(yLabelX, yLabelY);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillStyle = '#1e2b54';
+  ctx.font = `${PLOT_FONT.legendPx}px ${UI_FONT_FAMILY}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('Result size Q-error', 0, 0);
+  ctx.restore();
 
   ctx.strokeStyle = '#1e2b54';
   ctx.lineWidth = 2;
