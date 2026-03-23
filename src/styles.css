@@ -455,9 +455,9 @@ option {
 }
 
 .leaderboard-tabs {
-  display: flex;
-  justify-content: center;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
   width: 100%;
   max-width: 1200px;
   margin: 0 auto;
@@ -472,6 +472,16 @@ option {
   font-size: 0.95rem;
   font-family: var(--font-ui);
   cursor: pointer;
+  width: fit-content;
+  min-width: 130px;
+}
+
+.leaderboard-tab-btn:first-child {
+  justify-self: end;
+}
+
+.leaderboard-tab-btn:last-child {
+  justify-self: start;
 }
 
 .leaderboard-tab-btn.active {
