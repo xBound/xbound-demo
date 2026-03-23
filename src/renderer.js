@@ -25,7 +25,7 @@ const SYSTEM_ICON_PATHS = {
   xbound: resolveAssetPath(`${ICON_BASE_PATH}/xbound-icon.png`)
 };
 const SYSTEM_ICON_HEAD_SCALE = {
-  duckdb: 1.18,
+  duckdb: 1.08,
   postgres: 0.92,
   'fabric dw': 0.9,
   xbound: 0.94
