@@ -477,7 +477,7 @@ function renderQErrorBarPlot(entries) {
   };
 
   const xStep = width / Math.max(1, SYSTEMS.length);
-  const stemWidth = Math.max(4, Math.min(10, xStep * 0.13));
+  const stemWidth = 2;
   const iconHeadSize = Math.max(28, Math.min(44, xStep * 0.42));
   const entryBySystem = new Map(entries.map((entry) => [systemKeyForEntry(entry.system), entry]));
 
@@ -507,8 +507,19 @@ function renderQErrorBarPlot(entries) {
     ctx.font = `${PLOT_FONT.tickPx}px ${UI_FONT_FAMILY}`;
     const absTick = Math.abs(tick);
     const exp = Math.round(Math.log10(absTick));
-    const tickLabel = `10^${exp}x`;
-    ctx.fillText(tickLabel, 8, yy + 4);
+    const baseText = '10';
+    const expText = `${exp}`;
+    const suffixText = 'x';
+    const baseX = 8;
+    const baseY = yy + 4;
+    ctx.fillText(baseText, baseX, baseY);
+    const baseWidth = ctx.measureText(baseText).width;
+    const expFont = `${Math.max(10, Math.round(PLOT_FONT.tickPx * 0.72))}px ${UI_FONT_FAMILY}`;
+    ctx.font = expFont;
+    ctx.fillText(expText, baseX + baseWidth + 1, baseY - Math.max(6, Math.round(PLOT_FONT.tickPx * 0.45)));
+    const expWidth = ctx.measureText(expText).width;
+    ctx.font = `${PLOT_FONT.tickPx}px ${UI_FONT_FAMILY}`;
+    ctx.fillText(suffixText, baseX + baseWidth + expWidth + 3, baseY);
   });
 
   ctx.strokeStyle = '#1e2b54';
@@ -581,31 +592,16 @@ function renderQErrorBarPlot(entries) {
     const barTop = y(entry.signedQError || entry.qError);
     const isXBound = entry.system.includes(XBOUND_SUFFIX);
     const colorKey = isXBound ? 'xbound' : systemKeyForEntry(entry.system);
-    const accent = SYSTEM_COLORS[colorKey] || '#1461ff';
     const icon = loadSystemIcon(colorKey);
     const stemY1 = Math.min(barTop, baselineY);
     const stemY2 = Math.max(barTop, baselineY);
 
-    ctx.fillStyle = accent;
-    ctx.globalAlpha = 0.35;
-    ctx.fillRect(centerX - stemWidth / 2, stemY1, stemWidth, Math.max(1, stemY2 - stemY1));
-    ctx.globalAlpha = 1;
-
-    if (xboundOverlay && !xboundOverlay.unsupported && !xboundOverlay.zeroLowerBound && Number.isFinite(xboundOverlay.estimate) && entry.estimate < xboundOverlay.estimate) {
-      const lineY = y(xboundOverlay.signedQError);
-      const overflowTop = Math.max(lineY, stemY1);
-      const overflowBottom = stemY2;
-      if (overflowBottom > overflowTop) {
-        ctx.fillStyle = '#ff4d4f';
-        ctx.globalAlpha = 0.75;
-        ctx.fillRect(centerX - stemWidth / 2, overflowTop, stemWidth, overflowBottom - overflowTop);
-        ctx.globalAlpha = 1;
-      }
-    }
-
     ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(centerX - stemWidth / 2, stemY1, stemWidth, Math.max(1, stemY2 - stemY1));
+    ctx.lineWidth = stemWidth;
+    ctx.beginPath();
+    ctx.moveTo(centerX, stemY1);
+    ctx.lineTo(centerX, stemY2);
+    ctx.stroke();
 
     // Icon-only lollipop head (no circular container).
     ctx.save();
@@ -617,7 +613,7 @@ function renderQErrorBarPlot(entries) {
       ctx.beginPath();
       ctx.arc(centerX, barTop, iconHeadSize * 0.28, 0, Math.PI * 2);
       ctx.closePath();
-      ctx.fillStyle = accent;
+      ctx.fillStyle = '#000000';
       ctx.globalAlpha = 0.92;
       ctx.fill();
       ctx.globalAlpha = 1;
