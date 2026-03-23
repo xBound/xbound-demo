@@ -917,11 +917,6 @@ function renderLeaderboard() {
     return;
   }
 
-  const summary = document.createElement('p');
-  summary.className = 'leaderboard-summary';
-  summary.textContent = `Benchmark: ${benchmark}. Sanity = lower-bound violations. Quality = median q-error (lower is better).`;
-  els.leaderboardList.appendChild(summary);
-
   const tabs = document.createElement('div');
   tabs.className = 'leaderboard-tabs';
   const sanityTabBtn = document.createElement('button');
@@ -943,11 +938,6 @@ function renderLeaderboard() {
   els.leaderboardList.appendChild(tabs);
 
   if (leaderboardTab === 'sanity' && sanityRows.length > 0) {
-    const sanityTitle = document.createElement('h3');
-    sanityTitle.className = 'leaderboard-section-title';
-    sanityTitle.textContent = 'Sanity Ranking';
-    els.leaderboardList.appendChild(sanityTitle);
-
     const sanityPodium = document.createElement('div');
     sanityPodium.className = 'leaderboard-podium';
     const sanityPodiumOrder = [1, 0, 2];
@@ -966,34 +956,45 @@ function renderLeaderboard() {
       `;
       sanityPodium.appendChild(card);
     });
-    els.leaderboardList.appendChild(sanityPodium);
-
-    const sanityTable = document.createElement('div');
-    sanityTable.className = 'leaderboard-table';
+    const sanityCards = document.createElement('div');
+    sanityCards.className = 'quality-cards sanity-cards';
     sanityRows.forEach((row, idx) => {
-      const item = document.createElement('div');
-      item.className = 'leaderboard-row';
-      item.innerHTML = `
-        <div class="leaderboard-col rank">${idx + 1}</div>
-        <div class="leaderboard-col system">
+      const card = document.createElement('div');
+      card.className = 'quality-card';
+      card.innerHTML = `
+        <div class="quality-card-header">
+          <span class="leaderboard-col rank">${idx + 1}</span>
           <img class="leaderboard-system-icon" src="${row.icon || ''}" alt="${row.label}" />
           <span>${row.label}</span>
         </div>
-        <div class="leaderboard-col">${(row.violationRate * 100).toFixed(1)}% violations</div>
-        <div class="leaderboard-col">median severity ${row.medianSeverity.toFixed(2)}x</div>
-        <div class="leaderboard-col">${row.violations}/${row.checks}</div>
+        <div class="quality-variants">
+          <div class="quality-variant">
+            <span class="variant-chip">violations</span>
+            <span>${(row.violationRate * 100).toFixed(1)}% (${row.violations}/${row.checks})</span>
+          </div>
+          <div class="quality-variant">
+            <span class="variant-chip">severity</span>
+            <span>median ${row.medianSeverity.toFixed(2)}x</span>
+          </div>
+        </div>
       `;
-      sanityTable.appendChild(item);
+      sanityCards.appendChild(card);
     });
-    els.leaderboardList.appendChild(sanityTable);
+
+    const sanityLayout = document.createElement('div');
+    sanityLayout.className = 'leaderboard-split';
+    const sanityPodiumPanel = document.createElement('div');
+    sanityPodiumPanel.className = 'leaderboard-left-panel';
+    sanityPodiumPanel.appendChild(sanityPodium);
+    sanityLayout.appendChild(sanityPodiumPanel);
+    const sanityPanel = document.createElement('div');
+    sanityPanel.className = 'leaderboard-right-panel';
+    sanityPanel.appendChild(sanityCards);
+    sanityLayout.appendChild(sanityPanel);
+    els.leaderboardList.appendChild(sanityLayout);
   }
 
   if (leaderboardTab === 'qerror' && qualityRows.length > 0) {
-    const qualityTitle = document.createElement('h3');
-    qualityTitle.className = 'leaderboard-section-title';
-    qualityTitle.textContent = 'Quality Ranking (Raw + xBound-ed)';
-    els.leaderboardList.appendChild(qualityTitle);
-
     const podium = document.createElement('div');
     podium.className = 'leaderboard-podium';
     const podiumOrder = [1, 0, 2];
@@ -1005,15 +1006,13 @@ function renderLeaderboard() {
       card.innerHTML = `
         <div class="podium-top">
           ${leaderboardVariantIconMarkup(row.system, row.clipped, row.label)}
-          <div class="podium-score">median q-error ${row.score.toFixed(2)}x</div>
+          <div class="podium-score">median Q-error: <span class="metric-value">${row.score.toFixed(1)}x</span></div>
           <div class="podium-meta">${row.queries} queries</div>
         </div>
         <div class="podium-step">#${idx + 1}</div>
       `;
       podium.appendChild(card);
     });
-    els.leaderboardList.appendChild(podium);
-
     const bySystem = new Map(SYSTEMS.map((system) => [system, { raw: null, clipped: null }]));
     qualityRows.forEach((row) => {
       const holder = bySystem.get(row.system);
@@ -1030,10 +1029,10 @@ function renderLeaderboard() {
       const label = SYSTEM_LABELS[system] || system;
       const icon = SYSTEM_ICON_PATHS[system] || '';
       const rawText = pack.raw
-        ? `median q-error ${pack.raw.medianQError.toFixed(2)}x`
+        ? `median Q-error: <span class="metric-value">${pack.raw.medianQError.toFixed(1)}x</span>`
         : 'no data';
       const clippedText = pack.clipped
-        ? `median q-error ${pack.clipped.medianQError.toFixed(2)}x`
+        ? `median Q-error: <span class="metric-value">${pack.clipped.medianQError.toFixed(1)}x</span>`
         : 'no data';
       const improvement = (pack.raw && pack.clipped)
         ? `${(((pack.raw.medianQError - pack.clipped.medianQError) / pack.raw.medianQError) * 100).toFixed(1)}% improvement`
@@ -1057,14 +1056,24 @@ function renderLeaderboard() {
               <span>-ed</span>
               <img class="variant-chip-icon" src="${icon}" alt="${label}" />
             </span>
-            <span>${clippedText}</span>
+            <span class="metric-down">↓ ${clippedText}</span>
           </div>
         </div>
         <div class="quality-improvement">${improvement}</div>
       `;
       qualityCards.appendChild(card);
     });
-    els.leaderboardList.appendChild(qualityCards);
+    const qualityLayout = document.createElement('div');
+    qualityLayout.className = 'leaderboard-split';
+    const qualityPodiumPanel = document.createElement('div');
+    qualityPodiumPanel.className = 'leaderboard-left-panel';
+    qualityPodiumPanel.appendChild(podium);
+    qualityLayout.appendChild(qualityPodiumPanel);
+    const qualityPanel = document.createElement('div');
+    qualityPanel.className = 'leaderboard-right-panel';
+    qualityPanel.appendChild(qualityCards);
+    qualityLayout.appendChild(qualityPanel);
+    els.leaderboardList.appendChild(qualityLayout);
   }
 
   if (leaderboardTab === 'sanity' && sanityRows.length === 0) {
