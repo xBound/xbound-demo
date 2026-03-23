@@ -439,7 +439,7 @@ option {
   border-radius: 3px;
   background: #f7f8fb;
   padding: 10px;
-  height: 360px;
+  height: auto;
   overflow: auto;
 }
 
@@ -448,9 +448,10 @@ option {
   border-radius: 3px;
   background: #f7f8fb;
   padding: 10px;
-  height: 360px;
+  height: auto;
   overflow: hidden;
   display: flex;
+  align-items: flex-start;
 }
 
 .leaderboard-tabs {
@@ -485,9 +486,10 @@ option {
   justify-content: center;
   gap: 14px;
   width: 100%;
-  height: 100%;
+  height: auto;
   min-height: 0;
   padding: 0;
+  align-self: flex-start;
 }
 
 .podium-card {
