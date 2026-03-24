@@ -168,6 +168,7 @@ let leaderboardTab = 'sanity';
 const benchmarkLoadWarnings = new Map();
 let xboundSliderRefreshTimer = 0;
 let xboundSliderRefreshSeq = 0;
+let syncedPanelHeight = 0;
 
 function benchmarkSlug(benchmark) {
   const b = String(benchmark || '').trim().toLowerCase();
@@ -1124,19 +1125,28 @@ function alignRunButtonToSqlText() {
 
 function syncRailButtonSizing() {
   if (!els.navRail || !els.dashboardTabBtn || !els.leaderboardBtn) return;
-  const referenceEl =
-    currentMode === 'leaderboard' && els.controlsPanel
-      ? els.controlsPanel
-      : els.sqlEditorWrap;
-  if (!referenceEl) return;
+  const sqlRect = els.sqlEditorWrap?.getBoundingClientRect?.();
+  if (sqlRect && Number.isFinite(sqlRect.height) && sqlRect.height > 0) {
+    syncedPanelHeight = sqlRect.height;
+  }
+  if ((!Number.isFinite(syncedPanelHeight) || syncedPanelHeight <= 0) && els.controlsPanel) {
+    const controlsRect = els.controlsPanel.getBoundingClientRect();
+    if (Number.isFinite(controlsRect.height) && controlsRect.height > 0) {
+      syncedPanelHeight = controlsRect.height;
+    }
+  }
+  if (!Number.isFinite(syncedPanelHeight) || syncedPanelHeight <= 0) return;
 
-  const referenceRect = referenceEl.getBoundingClientRect();
-  if (!Number.isFinite(referenceRect.height) || referenceRect.height <= 0) return;
   const railStyle = window.getComputedStyle(els.navRail);
   if (railStyle.flexDirection === 'row') {
     els.navRail.style.height = '';
     els.navRail.style.minHeight = '';
     els.navRail.style.maxHeight = '';
+    if (els.controlsPanel) {
+      els.controlsPanel.style.height = '';
+      els.controlsPanel.style.minHeight = '';
+      els.controlsPanel.style.maxHeight = '';
+    }
     [els.dashboardTabBtn, els.leaderboardBtn].forEach((btn) => {
       btn.style.height = '';
       btn.style.minHeight = '';
@@ -1145,7 +1155,7 @@ function syncRailButtonSizing() {
     return;
   }
 
-  const syncedHeight = referenceRect.height;
+  const syncedHeight = syncedPanelHeight;
   const paddingTop = parseFloat(railStyle.paddingTop) || 0;
   const paddingBottom = parseFloat(railStyle.paddingBottom) || 0;
   const gap = parseFloat(railStyle.rowGap || railStyle.gap) || 0;
@@ -1158,6 +1168,11 @@ function syncRailButtonSizing() {
   els.navRail.style.height = railHeightPx;
   els.navRail.style.minHeight = railHeightPx;
   els.navRail.style.maxHeight = railHeightPx;
+  if (els.controlsPanel) {
+    els.controlsPanel.style.height = railHeightPx;
+    els.controlsPanel.style.minHeight = railHeightPx;
+    els.controlsPanel.style.maxHeight = railHeightPx;
+  }
   buttons.forEach((btn) => {
     btn.style.height = buttonHeightPx;
     btn.style.minHeight = buttonHeightPx;
