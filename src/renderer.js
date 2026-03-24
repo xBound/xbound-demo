@@ -134,6 +134,7 @@ const els = {
   appName: document.getElementById('appName'),
   sqlPanel: document.querySelector('.sql-panel'),
   sqlEditorWrap: document.querySelector('.sql-editor-wrap'),
+  controlsPanel: document.querySelector('.controls-panel'),
   benchmarkSelect: document.getElementById('benchmarkSelect'),
   querySelect: document.getElementById('querySelect'),
   queryControls: document.getElementById('queryControls'),
@@ -1122,25 +1123,46 @@ function alignRunButtonToSqlText() {
 }
 
 function syncRailButtonSizing() {
-  if (!els.dashboardTabBtn || !els.sqlEditorWrap) return;
-  const sqlRect = els.sqlEditorWrap.getBoundingClientRect();
-  const topHeight = Math.round(sqlRect.height);
-  if (!Number.isFinite(topHeight) || topHeight <= 0) return;
+  if (!els.navRail || !els.dashboardTabBtn || !els.leaderboardBtn) return;
+  const referenceEl =
+    currentMode === 'leaderboard' && els.controlsPanel
+      ? els.controlsPanel
+      : els.sqlEditorWrap;
+  if (!referenceEl) return;
 
-  const topPx = `${topHeight}px`;
-  els.dashboardTabBtn.style.height = topPx;
-  els.dashboardTabBtn.style.minHeight = topPx;
+  const referenceRect = referenceEl.getBoundingClientRect();
+  if (!Number.isFinite(referenceRect.height) || referenceRect.height <= 0) return;
+  const railStyle = window.getComputedStyle(els.navRail);
+  if (railStyle.flexDirection === 'row') {
+    els.navRail.style.height = '';
+    els.navRail.style.minHeight = '';
+    els.navRail.style.maxHeight = '';
+    [els.dashboardTabBtn, els.leaderboardBtn].forEach((btn) => {
+      btn.style.height = '';
+      btn.style.minHeight = '';
+      btn.style.maxHeight = '';
+    });
+    return;
+  }
 
-  if (!els.leaderboardBtn || !els.navRail) return;
-  const railStyles = window.getComputedStyle(els.navRail);
-  const railPaddingTop = Number.parseFloat(railStyles.paddingTop) || 0;
-  const railPaddingBottom = Number.parseFloat(railStyles.paddingBottom) || 0;
-  const railGap = Number.parseFloat(railStyles.rowGap || railStyles.gap) || 0;
-  const railInnerHeight = els.navRail.clientHeight - railPaddingTop - railPaddingBottom;
-  const remaining = Math.max(72, Math.round(railInnerHeight - topHeight - railGap));
-  const bottomPx = `${remaining}px`;
-  els.leaderboardBtn.style.height = bottomPx;
-  els.leaderboardBtn.style.minHeight = bottomPx;
+  const syncedHeight = referenceRect.height;
+  const paddingTop = parseFloat(railStyle.paddingTop) || 0;
+  const paddingBottom = parseFloat(railStyle.paddingBottom) || 0;
+  const gap = parseFloat(railStyle.rowGap || railStyle.gap) || 0;
+  const buttons = [els.dashboardTabBtn, els.leaderboardBtn];
+  const totalGap = gap * Math.max(0, buttons.length - 1);
+  const innerHeight = Math.max(0, syncedHeight - paddingTop - paddingBottom - totalGap);
+  const buttonHeightPx = `${innerHeight / buttons.length}px`;
+  const railHeightPx = `${syncedHeight}px`;
+
+  els.navRail.style.height = railHeightPx;
+  els.navRail.style.minHeight = railHeightPx;
+  els.navRail.style.maxHeight = railHeightPx;
+  buttons.forEach((btn) => {
+    btn.style.height = buttonHeightPx;
+    btn.style.minHeight = buttonHeightPx;
+    btn.style.maxHeight = buttonHeightPx;
+  });
 }
 
 function setMode(mode) {
