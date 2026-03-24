@@ -130,8 +130,10 @@ const MOCK_PLAN_JSON = {
 
 const els = {
   appShell: document.querySelector('.app-shell'),
+  navRail: document.querySelector('.nav-rail'),
   appName: document.getElementById('appName'),
   sqlPanel: document.querySelector('.sql-panel'),
+  sqlEditorWrap: document.querySelector('.sql-editor-wrap'),
   benchmarkSelect: document.getElementById('benchmarkSelect'),
   querySelect: document.getElementById('querySelect'),
   queryControls: document.getElementById('queryControls'),
@@ -162,6 +164,9 @@ let currentMode = 'run';
 let sqlEditor = null;
 const supportsCustomQuery = typeof window.xbound?.estimateCustomQuery === 'function';
 let leaderboardTab = 'sanity';
+const benchmarkLoadWarnings = new Map();
+let xboundSliderRefreshTimer = 0;
+let xboundSliderRefreshSeq = 0;
 
 function benchmarkSlug(benchmark) {
   const b = String(benchmark || '').trim().toLowerCase();
@@ -296,9 +301,14 @@ async function loadPrecomputedEstimatesWeb(benchmark, xboundParams) {
       text = await fetchText(sourcePath);
     } catch (err) {
       if (fileName.startsWith('dw::')) continue;
-      if (!(alias === 'so_full_ceb' && fileName.startsWith('xbound::'))) throw err;
-      const fallbackFile = 'xbound::so_full_ceb-queries00_host=hausberg_parts=16_ns=1_ub=0_l0-theta=8_hh-theta=12_mcv=1024.jsonl';
-      text = await fetchText(`${dirPath}/${fallbackFile}`);
+      if (fileName.startsWith('xbound::')) {
+        const missingError = new Error(`Missing xBound lower-bound file for ${benchmark}: ${fileName}`);
+        missingError.code = 'MISSING_XBOUND_FILE';
+        missingError.benchmark = benchmark;
+        missingError.fileName = fileName;
+        throw missingError;
+      }
+      throw err;
     }
     const rows = parseJsonl(text);
     rows.forEach((obj) => {
@@ -488,6 +498,7 @@ function renderQErrorBarPlot(entries) {
   const stemWidth = 2;
   const iconHeadSize = Math.max(28, Math.min(44, xStep * 0.42));
   const entryBySystem = new Map(entries.map((entry) => [systemKeyForEntry(entry.system), entry]));
+  const benchmarkWarning = benchmarkLoadWarnings.get(els.benchmarkSelect.value) || '';
 
   ctx.clearRect(0, 0, cssWidth, cssHeight);
   ctx.fillStyle = '#ffffff';
@@ -574,6 +585,11 @@ function renderQErrorBarPlot(entries) {
     : 'actual';
   ctx.fillText(baselineLabel, margin.left + 8, baselineY - 8);
   drawLegend(ctx, cssWidth / 2, 18);
+  if (benchmarkWarning) {
+    ctx.fillStyle = '#a33a3a';
+    ctx.font = `${PLOT_FONT.warningPx}px ${UI_FONT_FAMILY}`;
+    ctx.fillText(`⚠️ ${benchmarkWarning}`, margin.left + 8, margin.top - 12);
+  }
 
   if (xboundOverlay) {
     if (xboundOverlay.unsupported) {
@@ -1105,6 +1121,28 @@ function alignRunButtonToSqlText() {
   els.runBtn.style.transform = 'translateX(0px)';
 }
 
+function syncRailButtonSizing() {
+  if (!els.dashboardTabBtn || !els.sqlEditorWrap) return;
+  const sqlRect = els.sqlEditorWrap.getBoundingClientRect();
+  const topHeight = Math.round(sqlRect.height);
+  if (!Number.isFinite(topHeight) || topHeight <= 0) return;
+
+  const topPx = `${topHeight}px`;
+  els.dashboardTabBtn.style.height = topPx;
+  els.dashboardTabBtn.style.minHeight = topPx;
+
+  if (!els.leaderboardBtn || !els.navRail) return;
+  const railStyles = window.getComputedStyle(els.navRail);
+  const railPaddingTop = Number.parseFloat(railStyles.paddingTop) || 0;
+  const railPaddingBottom = Number.parseFloat(railStyles.paddingBottom) || 0;
+  const railGap = Number.parseFloat(railStyles.rowGap || railStyles.gap) || 0;
+  const railInnerHeight = els.navRail.clientHeight - railPaddingTop - railPaddingBottom;
+  const remaining = Math.max(72, Math.round(railInnerHeight - topHeight - railGap));
+  const bottomPx = `${remaining}px`;
+  els.leaderboardBtn.style.height = bottomPx;
+  els.leaderboardBtn.style.minHeight = bottomPx;
+}
+
 function setMode(mode) {
   currentMode = mode;
   if (els.dashboardTabBtn) els.dashboardTabBtn.classList.toggle('active', mode === 'run' || mode === 'plan');
@@ -1124,7 +1162,10 @@ function setMode(mode) {
   if (mode === 'run') renderQErrorBarPlot(entries);
   if (mode === 'plan') renderPlanTree(els.planSystemSelect.value);
   if (mode === 'leaderboard') renderLeaderboard();
-  window.requestAnimationFrame(alignRunButtonToSqlText);
+  window.requestAnimationFrame(() => {
+    alignRunButtonToSqlText();
+    syncRailButtonSizing();
+  });
 }
 
 function populateSelectors() {
@@ -1173,6 +1214,11 @@ function syncSqlInput() {
   if (sqlEditor) sqlEditor.setValue(sqlText);
   else els.sqlInput.value = sqlText;
 
+  const benchmarkWarning = benchmarkLoadWarnings.get(els.benchmarkSelect.value);
+  if (benchmarkWarning) {
+    els.statusText.textContent = `Warning: ${benchmarkWarning}`;
+    return;
+  }
   if (queryData && Number.isFinite(queryData.actual)) {
     els.statusText.textContent = `actual cardinality: ${queryData.actual.toLocaleString()}`;
   }
@@ -1256,22 +1302,18 @@ async function ensureBenchmarkLoaded(benchmark) {
   const workloadLoader = window.xbound?.loadWorkloadQueries;
   const workloadSource = typeof workloadLoader === 'function' ? workloadLoader : loadWorkloadQueriesWeb;
   const estimateSource = typeof estimateLoader === 'function' ? estimateLoader : loadPrecomputedEstimatesWeb;
-  queryStore[benchmark] ||= {};
+  const nextQueries = {};
 
   try {
     const workloadResult = await workloadSource(benchmark);
     if (workloadResult?.ok && workloadResult.queries && typeof workloadResult.queries === 'object') {
-      if (String(benchmark).toLowerCase() === 'joblight') {
-        queryStore[benchmark] = {};
-      }
       Object.entries(workloadResult.queries).forEach(([queryName, queryData]) => {
         const canonicalName = canonicalQueryName(benchmark, queryName);
-        queryStore[benchmark][canonicalName] ||= { sql: '', actual: 0, estimates: {}, xbound: {} };
+        nextQueries[canonicalName] ||= { sql: '', actual: 0, estimates: {}, xbound: {} };
         if (typeof queryData?.sql === 'string' && queryData.sql) {
-          queryStore[benchmark][canonicalName].sql = queryData.sql;
+          nextQueries[canonicalName].sql = queryData.sql;
         }
       });
-      els.statusText.textContent = `Loaded workload queries from ${workloadResult.sourcePath}`;
     }
 
     const estimateResult = await estimateSource(benchmark, xboundParamOptionsForBenchmark(benchmark));
@@ -1281,9 +1323,9 @@ async function ensureBenchmarkLoaded(benchmark) {
         const loaded = normalizeLoadedQuery(queryData);
         if (!loaded) return;
 
-        queryStore[benchmark][canonicalName] ||= { sql: '', actual: 0, estimates: {}, xbound: {} };
-        const current = queryStore[benchmark][canonicalName];
-        queryStore[benchmark][canonicalName] = {
+        nextQueries[canonicalName] ||= { sql: '', actual: 0, estimates: {}, xbound: {} };
+        const current = nextQueries[canonicalName];
+        nextQueries[canonicalName] = {
           ...current,
           sql: loaded.sql || current.sql,
           actual: loaded.actual || current.actual,
@@ -1291,11 +1333,44 @@ async function ensureBenchmarkLoaded(benchmark) {
           xbound: { ...(current.xbound || {}), ...(loaded.xbound || {}) }
         };
       });
+    }
+    queryStore[benchmark] = nextQueries;
+    benchmarkLoadWarnings.delete(benchmark);
+    if (benchmark === els.benchmarkSelect.value) {
       els.statusText.textContent = `Loaded precomputed estimates from ${estimateResult.sourcePath}`;
     }
-  } catch {
-    // Keep mock data and stay silent on load failures.
+  } catch (err) {
+    loadedBenchmarks.delete(cacheKey);
+    queryStore[benchmark] = {};
+    if (err?.code === 'MISSING_XBOUND_FILE') {
+      benchmarkLoadWarnings.set(benchmark, `missing xBound file for ${err.benchmark} (${err.fileName})`);
+    } else {
+      benchmarkLoadWarnings.set(benchmark, `failed to load benchmark data for ${benchmark}`);
+    }
+    if (benchmark === els.benchmarkSelect.value) {
+      els.statusText.textContent = `Warning: ${benchmarkLoadWarnings.get(benchmark)}.`;
+    }
   }
+}
+
+async function refreshForXboundSliderChange() {
+  if (els.benchmarkSelect.value !== 'SO-CEB') return;
+  const refreshSeq = ++xboundSliderRefreshSeq;
+  customQueryData = null;
+  await ensureBenchmarkLoaded('SO-CEB');
+  if (refreshSeq !== xboundSliderRefreshSeq) return;
+  updateQuerySelector();
+  const entries = activeEntries();
+  if (currentMode === 'run') renderQErrorBarPlot(entries);
+  if (currentMode === 'leaderboard') renderLeaderboard();
+}
+
+function scheduleXboundSliderRefresh(delayMs) {
+  if (xboundSliderRefreshTimer) window.clearTimeout(xboundSliderRefreshTimer);
+  xboundSliderRefreshTimer = window.setTimeout(() => {
+    xboundSliderRefreshTimer = 0;
+    refreshForXboundSliderChange();
+  }, delayMs);
 }
 
 function bindEvents() {
@@ -1321,15 +1396,14 @@ function bindEvents() {
     if (!el) return;
     el.addEventListener('input', () => {
       syncXboundSliderLabels();
+      scheduleXboundSliderRefresh(120);
     });
     el.addEventListener('change', async () => {
-      if (els.benchmarkSelect.value !== 'SO-CEB') return;
-      customQueryData = null;
-      await ensureBenchmarkLoaded('SO-CEB');
-      updateQuerySelector();
-      const entries = activeEntries();
-      if (currentMode === 'run') renderQErrorBarPlot(entries);
-      if (currentMode === 'leaderboard') renderLeaderboard();
+      if (xboundSliderRefreshTimer) {
+        window.clearTimeout(xboundSliderRefreshTimer);
+        xboundSliderRefreshTimer = 0;
+      }
+      await refreshForXboundSliderChange();
     });
   });
 
@@ -1424,6 +1498,7 @@ function bindEvents() {
   window.addEventListener('resize', () => {
     if (currentMode === 'run') renderQErrorBarPlot(activeEntries());
     alignRunButtonToSqlText();
+    syncRailButtonSizing();
   });
 }
 
@@ -1458,7 +1533,10 @@ async function init() {
     updateXboundParamsState();
     bindEvents();
     setMode('run');
-    window.requestAnimationFrame(alignRunButtonToSqlText);
+    window.requestAnimationFrame(() => {
+      alignRunButtonToSqlText();
+      syncRailButtonSizing();
+    });
   } catch (err) {
     console.error('[init][failed]', err);
     els.statusText.textContent = 'Render failed in this browser. Check console logs.';
