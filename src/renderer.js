@@ -146,6 +146,7 @@ const els = {
   xboundHhThetaValue: document.getElementById('xboundHhThetaValue'),
   planSystemSelect: document.getElementById('planSystemSelect'),
   planControls: document.getElementById('planControls'),
+  dashboardTabBtn: document.getElementById('dashboardTabBtn'),
   runBtn: document.getElementById('runBtn'),
   planViewBtn: document.getElementById('planViewBtn'),
   leaderboardBtn: document.getElementById('leaderboardBtn'),
@@ -1099,9 +1100,14 @@ function getSqlText() {
   return els.sqlInput.value;
 }
 
+function alignRunButtonToSqlText() {
+  if (!els.runBtn) return;
+  els.runBtn.style.transform = 'translateX(0px)';
+}
+
 function setMode(mode) {
   currentMode = mode;
-  els.runBtn.classList.toggle('active', mode === 'run');
+  if (els.dashboardTabBtn) els.dashboardTabBtn.classList.toggle('active', mode === 'run' || mode === 'plan');
   if (els.planViewBtn) els.planViewBtn.classList.toggle('active', mode === 'plan');
   els.leaderboardBtn.classList.toggle('active', mode === 'leaderboard');
 
@@ -1118,6 +1124,7 @@ function setMode(mode) {
   if (mode === 'run') renderQErrorBarPlot(entries);
   if (mode === 'plan') renderPlanTree(els.planSystemSelect.value);
   if (mode === 'leaderboard') renderLeaderboard();
+  window.requestAnimationFrame(alignRunButtonToSqlText);
 }
 
 function populateSelectors() {
@@ -1400,6 +1407,14 @@ function bindEvents() {
     });
   }
 
+  if (els.dashboardTabBtn) {
+    els.dashboardTabBtn.addEventListener('click', () => {
+      setMode('run');
+      renderQErrorBarPlot(activeEntries());
+      els.statusText.textContent = 'Dashboard opened';
+    });
+  }
+
   els.leaderboardBtn.addEventListener('click', () => {
     setMode('leaderboard');
     renderLeaderboard();
@@ -1408,6 +1423,7 @@ function bindEvents() {
 
   window.addEventListener('resize', () => {
     if (currentMode === 'run') renderQErrorBarPlot(activeEntries());
+    alignRunButtonToSqlText();
   });
 }
 
@@ -1442,6 +1458,7 @@ async function init() {
     updateXboundParamsState();
     bindEvents();
     setMode('run');
+    window.requestAnimationFrame(alignRunButtonToSqlText);
   } catch (err) {
     console.error('[init][failed]', err);
     els.statusText.textContent = 'Render failed in this browser. Check console logs.';

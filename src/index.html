@@ -16,10 +16,14 @@
       </header>
 
       <main class="layout-grid">
+        <aside class="nav-rail card" aria-label="View navigation">
+          <button id="dashboardTabBtn" class="rail-btn active" aria-label="Dashboard" title="Dashboard">📊 Dashboard</button>
+          <button id="leaderboardBtn" class="rail-btn" aria-label="Leaderboard" title="Leaderboard">🏆 Leaderboard</button>
+        </aside>
+
         <section class="sql-panel card">
-          <div class="left-actions">
-            <button id="runBtn" class="square-btn active" aria-label="Run" title="Run">▶</button>
-            <button id="leaderboardBtn" class="square-btn" aria-label="Leaderboard" title="Leaderboard">🏆</button>
+          <div class="sql-left-action">
+            <button id="runBtn" class="run-btn" aria-label="Run query" title="Run query">▶</button>
           </div>
           <div class="sql-content">
             <div class="sql-editor-wrap">
