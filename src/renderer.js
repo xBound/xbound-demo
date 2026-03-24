@@ -135,6 +135,7 @@ const els = {
   sqlPanel: document.querySelector('.sql-panel'),
   sqlEditorWrap: document.querySelector('.sql-editor-wrap'),
   controlsPanel: document.querySelector('.controls-panel'),
+  xboundPanel: document.querySelector('.xbound-panel'),
   benchmarkSelect: document.getElementById('benchmarkSelect'),
   querySelect: document.getElementById('querySelect'),
   queryControls: document.getElementById('queryControls'),
@@ -1125,11 +1126,25 @@ function alignRunButtonToSqlText() {
 
 function syncRailButtonSizing() {
   if (!els.navRail || !els.dashboardTabBtn || !els.leaderboardBtn) return;
-  const sqlRect = els.sqlEditorWrap?.getBoundingClientRect?.();
-  if (sqlRect && Number.isFinite(sqlRect.height) && sqlRect.height > 0) {
-    syncedPanelHeight = sqlRect.height;
+  const xboundRect = els.xboundPanel?.getBoundingClientRect?.();
+  if (xboundRect && Number.isFinite(xboundRect.height) && xboundRect.height > 0) {
+    syncedPanelHeight = xboundRect.height;
   }
-  if ((!Number.isFinite(syncedPanelHeight) || syncedPanelHeight <= 0) && els.controlsPanel) {
+  if (
+    (!Number.isFinite(syncedPanelHeight) || syncedPanelHeight <= 0) &&
+    currentMode !== 'leaderboard'
+  ) {
+    const sqlRect =
+      els.sqlPanel?.getBoundingClientRect?.() ||
+      els.sqlEditorWrap?.getBoundingClientRect?.();
+    if (sqlRect && Number.isFinite(sqlRect.height) && sqlRect.height > 0) {
+      syncedPanelHeight = sqlRect.height;
+    }
+  }
+  if (
+    (!Number.isFinite(syncedPanelHeight) || syncedPanelHeight <= 0) &&
+    els.controlsPanel
+  ) {
     const controlsRect = els.controlsPanel.getBoundingClientRect();
     if (Number.isFinite(controlsRect.height) && controlsRect.height > 0) {
       syncedPanelHeight = controlsRect.height;
@@ -1146,6 +1161,11 @@ function syncRailButtonSizing() {
       els.controlsPanel.style.height = '';
       els.controlsPanel.style.minHeight = '';
       els.controlsPanel.style.maxHeight = '';
+    }
+    if (els.sqlPanel) {
+      els.sqlPanel.style.height = '';
+      els.sqlPanel.style.minHeight = '';
+      els.sqlPanel.style.maxHeight = '';
     }
     [els.dashboardTabBtn, els.leaderboardBtn].forEach((btn) => {
       btn.style.height = '';
@@ -1172,6 +1192,11 @@ function syncRailButtonSizing() {
     els.controlsPanel.style.height = railHeightPx;
     els.controlsPanel.style.minHeight = railHeightPx;
     els.controlsPanel.style.maxHeight = railHeightPx;
+  }
+  if (els.sqlPanel && currentMode !== 'leaderboard') {
+    els.sqlPanel.style.height = railHeightPx;
+    els.sqlPanel.style.minHeight = railHeightPx;
+    els.sqlPanel.style.maxHeight = railHeightPx;
   }
   buttons.forEach((btn) => {
     btn.style.height = buttonHeightPx;

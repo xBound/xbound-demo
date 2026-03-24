@@ -153,6 +153,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-height: 0;
 }
 
 .sql-content label,
@@ -164,7 +165,8 @@ body {
 .sql-editor-wrap {
   position: relative;
   width: 100%;
-  height: clamp(150px, 24vh, 230px);
+  flex: 1 1 auto;
+  min-height: 0;
   border: 1px solid var(--line);
   border-radius: 2px;
   overflow: hidden;
@@ -174,7 +176,7 @@ body {
 
 #sqlInput {
   width: 100%;
-  height: clamp(150px, 24vh, 230px);
+  height: 100%;
   margin: 0;
   border: 0;
   border-radius: 0;
@@ -187,7 +189,7 @@ body {
 }
 
 .CodeMirror {
-  height: clamp(150px, 24vh, 230px);
+  height: 100%;
   font-family: var(--font-mono);
   font-size: 0.9rem;
   line-height: 1.45;
