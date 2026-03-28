@@ -1051,7 +1051,7 @@ function renderLeaderboard() {
   tabs.className = 'leaderboard-tabs';
   const sanityTabBtn = document.createElement('button');
   sanityTabBtn.className = `leaderboard-tab-btn${leaderboardTab === 'sanity' ? ' active' : ''}`;
-  sanityTabBtn.textContent = 'Sanity';
+  sanityTabBtn.textContent = 'Soundness';
   sanityTabBtn.addEventListener('click', () => {
     leaderboardTab = 'sanity';
     renderLeaderboard();
@@ -1209,7 +1209,7 @@ function renderLeaderboard() {
   if (leaderboardTab === 'sanity' && sanityRows.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'leaderboard-summary';
-    empty.textContent = 'No sanity data available for this benchmark.';
+    empty.textContent = 'No soundness data available for this benchmark.';
     els.leaderboardList.appendChild(empty);
   }
   if (leaderboardTab === 'qerror' && qualityRows.length === 0) {
