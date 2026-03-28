@@ -2,6 +2,8 @@ dump/
 node_modules/
 dist/
 
+.DS_Store
+
 **/__pycache__/
 data/benchmarks/est/joblight/dw::joblight-queries.jsonl
 data/benchmarks/est/so_full_ceb/dw::so_full_ceb-queries00.jsonl

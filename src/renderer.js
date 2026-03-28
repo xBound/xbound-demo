@@ -269,7 +269,8 @@ async function loadPrecomputedEstimatesWeb(benchmark, xboundParams) {
       'duckdb::joblight-queries.jsonl',
       'postgres::joblight-queries.jsonl',
       'dw::joblight-queries.jsonl',
-      'xbound::joblight-queries_host=hausberg_parts=16_ns=1_ub=0_l0-theta=8_hh-theta=12_mcv=1024.jsonl'
+      'xbound::joblight-queries_host=hausberg_parts=16_ns=1_ub=0_l0-theta=8_hh-theta=12_mcv=1024.jsonl',
+      'lpbound-10::joblight-queries.jsonl'
     ],
     so_full_ceb: [
       'duckdb::so_full_ceb-queries00.jsonl',
@@ -288,7 +289,7 @@ async function loadPrecomputedEstimatesWeb(benchmark, xboundParams) {
   const upsert = (obj) => {
     const key = queryKey(obj);
     if (!key) return null;
-    queries[key] ||= { estimates: {}, xbound: {} };
+    queries[key] ||= { estimates: {}, xbound: {}, lpbound: {} };
     const entry = queries[key];
     if (!entry.sql && typeof obj.sql === 'string') entry.sql = obj.sql;
     if (!entry.actual) {
@@ -332,6 +333,14 @@ async function loadPrecomputedEstimatesWeb(benchmark, xboundParams) {
           entry.xbound.duckdb = val;
           entry.xbound.postgres = val;
           entry.xbound['fabric dw'] = val;
+        }
+      } else if (fileName.startsWith('lpbound')) {
+        const lpKey = Object.keys(obj).find((k) => /^lpbound/i.test(String(k)));
+        const val = numericValue(lpKey ? obj[lpKey] : undefined, obj.lpbound, obj.upper_bound, obj.ub);
+        if (val !== null) {
+          entry.lpbound.duckdb = val;
+          entry.lpbound.postgres = val;
+          entry.lpbound['fabric dw'] = val;
         }
       }
     });
@@ -459,6 +468,28 @@ function xboundOverlayEntry() {
   return null;
 }
 
+function lpboundOverlayEntry() {
+  const queryData = getCurrentQueryData();
+  if (!queryData) return null;
+  const actual = queryData.actual;
+  if (!Number.isFinite(actual) || actual === 0) return null;
+
+  for (const system of SYSTEMS) {
+    const estimate = queryData.lpbound?.[system];
+    if (!Number.isFinite(estimate) || estimate <= 0) continue;
+    const q = Math.max(estimate / actual, actual / estimate);
+    return {
+      system: 'lpbound',
+      estimate,
+      actual,
+      qError: q,
+      signedQError: estimate >= actual ? q : -q
+    };
+  }
+
+  return null;
+}
+
 function renderQErrorBarPlot(entries) {
   const canvas = els.chartCanvas;
   const ctx = canvas.getContext('2d');
@@ -477,10 +508,12 @@ function renderQErrorBarPlot(entries) {
   const height = cssHeight - margin.top - margin.bottom;
   const baselineY = margin.top + height / 2;
   const xboundOverlay = xboundOverlayEntry();
+  const lpboundOverlay = lpboundOverlayEntry();
   const maxAbsQ = Math.max(
     1.2,
     ...entries.map((e) => Math.abs(e.signedQError || e.qError || 1)),
-    Math.abs(xboundOverlay?.signedQError || 1)
+    Math.abs(xboundOverlay?.signedQError || 1),
+    Math.abs(lpboundOverlay?.signedQError || 1)
   );
   const toSignedLog = (value) => {
     const v = Number(value);
@@ -640,6 +673,24 @@ function renderQErrorBarPlot(entries) {
     }
     }
   }
+  if (lpboundOverlay) {
+    const lineY = y(lpboundOverlay.signedQError);
+    ctx.strokeStyle = '#8f8f8f';
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(margin.left, lineY);
+    ctx.lineTo(cssWidth - margin.right, lineY);
+    ctx.stroke();
+
+    const estimateLabel = Number.isFinite(lpboundOverlay.estimate)
+      ? formatCardinality(lpboundOverlay.estimate)
+      : String(lpboundOverlay.estimate);
+    const upperBoundLabel = `🏠 upper bound: ${estimateLabel}`;
+    ctx.fillStyle = '#1f2a4d';
+    ctx.font = ESTIMATE_FONT;
+    const textWidth = ctx.measureText(upperBoundLabel).width;
+    ctx.fillText(upperBoundLabel, cssWidth - margin.right - textWidth - 8, lineY - 10);
+  }
 
   SYSTEMS.forEach((system, idx) => {
     const entry = entryBySystem.get(system);
@@ -699,14 +750,21 @@ function renderQErrorBarPlot(entries) {
     ctx.fillStyle = '#808080';
     ctx.fillText(estimateWithParens, labelStartX + arrowWidth + qErrorWidth, qLabelY);
 
-    const hasComparableLowerBound = Boolean(
+    const hasComparableBounds = Boolean(
       xboundOverlay &&
       !xboundOverlay.unsupported &&
-      !xboundOverlay.zeroLowerBound &&
-      Number.isFinite(xboundOverlay.estimate)
+      lpboundOverlay &&
+      Number.isFinite(lpboundOverlay.estimate) &&
+      (
+        xboundOverlay.zeroLowerBound ||
+        Number.isFinite(xboundOverlay.estimate)
+      )
     );
-    if (hasComparableLowerBound) {
-      const symbol = entry.estimate < xboundOverlay.estimate ? '🤦' : '👌';
+    if (hasComparableBounds) {
+      const inBounds = xboundOverlay.zeroLowerBound
+        ? (entry.estimate <= lpboundOverlay.estimate)
+        : (entry.estimate >= xboundOverlay.estimate && entry.estimate <= lpboundOverlay.estimate);
+      const symbol = inBounds ? '👌' : '🤦';
       const symbolY = (entry.signedQError || entry.qError) >= 0 ? qLabelY - 22 : qLabelY + 22;
       ctx.font = `21px ${UI_FONT_FAMILY}`;
       const symbolWidth = ctx.measureText(symbol).width;
@@ -1292,7 +1350,8 @@ function normalizeLoadedQuery(raw) {
     sql: raw.sql,
     actual: Number.isFinite(Number(raw.actual)) ? Number(raw.actual) : undefined,
     estimates: raw.estimates && typeof raw.estimates === 'object' ? raw.estimates : {},
-    xbound: raw.xbound && typeof raw.xbound === 'object' ? raw.xbound : {}
+    xbound: raw.xbound && typeof raw.xbound === 'object' ? raw.xbound : {},
+    lpbound: raw.lpbound && typeof raw.lpbound === 'object' ? raw.lpbound : {}
   };
 }
 
@@ -1371,7 +1430,7 @@ async function ensureBenchmarkLoaded(benchmark) {
     if (workloadResult?.ok && workloadResult.queries && typeof workloadResult.queries === 'object') {
       Object.entries(workloadResult.queries).forEach(([queryName, queryData]) => {
         const canonicalName = canonicalQueryName(benchmark, queryName);
-        nextQueries[canonicalName] ||= { sql: '', actual: 0, estimates: {}, xbound: {} };
+        nextQueries[canonicalName] ||= { sql: '', actual: 0, estimates: {}, xbound: {}, lpbound: {} };
         if (typeof queryData?.sql === 'string' && queryData.sql) {
           nextQueries[canonicalName].sql = queryData.sql;
         }
@@ -1385,14 +1444,15 @@ async function ensureBenchmarkLoaded(benchmark) {
         const loaded = normalizeLoadedQuery(queryData);
         if (!loaded) return;
 
-        nextQueries[canonicalName] ||= { sql: '', actual: 0, estimates: {}, xbound: {} };
+        nextQueries[canonicalName] ||= { sql: '', actual: 0, estimates: {}, xbound: {}, lpbound: {} };
         const current = nextQueries[canonicalName];
         nextQueries[canonicalName] = {
           ...current,
           sql: loaded.sql || current.sql,
           actual: loaded.actual || current.actual,
           estimates: { ...(current.estimates || {}), ...(loaded.estimates || {}) },
-          xbound: { ...(current.xbound || {}), ...(loaded.xbound || {}) }
+          xbound: { ...(current.xbound || {}), ...(loaded.xbound || {}) },
+          lpbound: { ...(current.lpbound || {}), ...(loaded.lpbound || {}) }
         };
       });
     }

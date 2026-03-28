@@ -118,7 +118,7 @@ function loadFromJsonlLines(lines) {
     const qKey = queryKey(obj);
     if (!qKey) return;
 
-    queryMap[qKey] ||= { estimates: {}, xbound: {} };
+    queryMap[qKey] ||= { estimates: {}, xbound: {}, lpbound: {} };
     const entry = queryMap[qKey];
     if (!entry.sql && typeof obj.sql === 'string') entry.sql = obj.sql;
     if (!entry.actual) {
@@ -139,6 +139,22 @@ function loadFromJsonlLines(lines) {
         const value = numericValue(estimate);
         if (system && value !== null) entry.xbound[system] = value;
       });
+    }
+
+    if (obj.lpbound && typeof obj.lpbound === 'object') {
+      Object.entries(obj.lpbound).forEach(([name, estimate]) => {
+        const system = systemKey(name);
+        const value = numericValue(estimate);
+        if (system && value !== null) entry.lpbound[system] = value;
+      });
+    }
+
+    const lpboundKey = Object.keys(obj).find((k) => /^lpbound/i.test(String(k)));
+    const lpboundValue = numericValue(lpboundKey ? obj[lpboundKey] : undefined, obj.upper_bound, obj.ub);
+    if (lpboundValue !== null) {
+      entry.lpbound.duckdb = lpboundValue;
+      entry.lpbound.postgres = lpboundValue;
+      entry.lpbound['fabric dw'] = lpboundValue;
     }
 
     const system = systemKey(obj.system || obj.dbms || obj.engine);
@@ -229,7 +245,7 @@ async function readBenchmarkEstimates(benchmarkName, xboundParams = null) {
         const upsert = (obj) => {
           const key = queryKey(obj);
           if (!key) return;
-          queries[key] ||= { estimates: {}, xbound: {} };
+          queries[key] ||= { estimates: {}, xbound: {}, lpbound: {} };
           const entry = queries[key];
           if (!entry.sql && typeof obj.sql === 'string') entry.sql = obj.sql;
           if (!entry.actual) {
@@ -275,6 +291,14 @@ async function readBenchmarkEstimates(benchmarkName, xboundParams = null) {
                 entry.xbound.duckdb = val;
                 entry.xbound.postgres = val;
                 entry.xbound['fabric dw'] = val;
+              }
+            } else if (file.startsWith('lpbound')) {
+              const lpKey = Object.keys(obj).find((k) => /^lpbound/i.test(String(k)));
+              const val = numericValue(lpKey ? obj[lpKey] : undefined, obj.lpbound, obj.upper_bound, obj.ub);
+              if (val !== null) {
+                entry.lpbound.duckdb = val;
+                entry.lpbound.postgres = val;
+                entry.lpbound['fabric dw'] = val;
               }
             }
           }
