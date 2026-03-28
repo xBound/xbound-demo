@@ -1405,7 +1405,7 @@ function populateSelectors() {
   updateQuerySelector();
 }
 
-function updateQuerySelector() {
+function updateQuerySelector(forceFirst = false) {
   const benchmark = els.benchmarkSelect.value;
   const queries = Object.keys(queryStore[benchmark] || {});
   const previousSelection = els.querySelect.value;
@@ -1423,6 +1423,9 @@ function updateQuerySelector() {
     option.value = '';
     option.textContent = 'No precomputed queries loaded';
     els.querySelect.appendChild(option);
+  } else if (forceFirst) {
+    const preferred = queries.find((q) => String(q).toUpperCase() === 'Q1');
+    els.querySelect.value = preferred || queries[0];
   } else if (previousSelection && queries.includes(previousSelection)) {
     els.querySelect.value = previousSelection;
   }
@@ -1646,7 +1649,7 @@ function bindEvents() {
     customQueryData = null;
     updateXboundParamsState();
     await ensureBenchmarkLoaded(els.benchmarkSelect.value);
-    updateQuerySelector();
+    updateQuerySelector(true);
     const entries = activeEntries();
     if (currentMode === 'run') renderQErrorBarPlot(entries);
     if (currentMode === 'leaderboard') renderLeaderboard();
