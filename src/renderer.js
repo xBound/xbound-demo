@@ -504,7 +504,7 @@ function renderQErrorBarPlot(entries) {
   canvas.height = Math.floor(cssHeight * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-  const margin = { top: 64, right: 26, bottom: 52, left: 68 };
+  const margin = { top: 88, right: 26, bottom: 76, left: 68 };
   const width = cssWidth - margin.left - margin.right;
   const height = cssHeight - margin.top - margin.bottom;
   const baselineY = margin.top + height / 2;
@@ -538,7 +538,7 @@ function renderQErrorBarPlot(entries) {
   const iconHeadSize = Math.max(28, Math.min(44, xStep * 0.42));
   const entryBySystem = new Map(entries.map((entry) => [systemKeyForEntry(entry.system), entry]));
   const benchmarkWarning = benchmarkLoadWarnings.get(els.benchmarkSelect.value) || '';
-  const boundLineColor = '#8f8f8f';
+  const boundLineColor = '#b8b8b8';
 
   ctx.clearRect(0, 0, cssWidth, cssHeight);
   ctx.fillStyle = '#ffffff';
@@ -689,7 +689,7 @@ function renderQErrorBarPlot(entries) {
       const estimateLabel = Number.isFinite(xboundOverlay.estimate)
         ? formatCardinality(xboundOverlay.estimate)
         : String(xboundOverlay.estimate);
-      const lowerBoundLabel = `xBound: ${estimateLabel}`;
+      const lowerBoundLabel = `lower bound: ${estimateLabel}`;
       ctx.fillStyle = '#1f2a4d';
       ctx.font = ESTIMATE_FONT;
       const textWidth = ctx.measureText(lowerBoundLabel).width;
@@ -714,7 +714,7 @@ function renderQErrorBarPlot(entries) {
     const estimateLabel = Number.isFinite(lpboundOverlay.estimate)
       ? formatCardinality(lpboundOverlay.estimate)
       : String(lpboundOverlay.estimate);
-    const upperBoundLabel = `🏠 LpBound: ${estimateLabel}`;
+    const upperBoundLabel = `🛖 upper bound: ${estimateLabel}`;
     ctx.fillStyle = '#1f2a4d';
     ctx.font = ESTIMATE_FONT;
     const textWidth = ctx.measureText(upperBoundLabel).width;
@@ -822,7 +822,7 @@ function renderHtmlLegend() {
 
   const upperItem = document.createElement('span');
   upperItem.className = 'chart-legend-item';
-  upperItem.innerHTML = `<span aria-hidden="true">🏠</span><span>LpBound</span>`;
+  upperItem.innerHTML = `<span aria-hidden="true">🛖</span><span>LpBound</span>`;
   els.chartLegend.appendChild(upperItem);
 }
 
