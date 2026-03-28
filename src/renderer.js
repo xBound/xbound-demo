@@ -148,6 +148,7 @@ const els = {
   xboundPartsValue: document.getElementById('xboundPartsValue'),
   xboundL0ThetaValue: document.getElementById('xboundL0ThetaValue'),
   xboundHhThetaValue: document.getElementById('xboundHhThetaValue'),
+  xboundWarning: document.getElementById('xboundWarning'),
   planSystemSelect: document.getElementById('planSystemSelect'),
   planControls: document.getElementById('planControls'),
   dashboardTabBtn: document.getElementById('dashboardTabBtn'),
@@ -404,6 +405,49 @@ function getCurrentQueryData() {
   return queryStore[benchmark]?.[queryName];
 }
 
+function benchmarkSupportsXboundParamVariants(benchmark) {
+  return String(benchmark || '').toLowerCase() === 'so-ceb';
+}
+
+function currentXboundSliderParams() {
+  return {
+    parts: discreteSliderValue(els.xboundParts, 16),
+    l0Theta: discreteSliderValue(els.xboundL0Theta, 8),
+    hhTheta: discreteSliderValue(els.xboundHhTheta, 12)
+  };
+}
+
+function isDefaultXboundSliderParams(params) {
+  return Number(params?.parts) === 16 && Number(params?.l0Theta) === 8 && Number(params?.hhTheta) === 12;
+}
+
+function currentXboundAvailabilityWarning() {
+  if (customQueryData) return '';
+  const benchmark = els.benchmarkSelect.value;
+  const benchmarkWarning = benchmarkLoadWarnings.get(benchmark);
+  if (benchmarkWarning && benchmarkWarning.includes('missing xBound file')) {
+    return benchmarkWarning;
+  }
+  const sliderParams = currentXboundSliderParams();
+  const benchmarkKey = String(benchmark || '').trim().toLowerCase();
+  if (benchmarkKey === 'joblight' && !isDefaultXboundSliderParams(sliderParams)) {
+    return `missing xBound file for ${benchmark} (parts=${sliderParams.parts}, l0-theta=${sliderParams.l0Theta}, hh-theta=${sliderParams.hhTheta})`;
+  }
+  if ((benchmarkKey === 'stats-ceb' || benchmarkKey === 'stats_ceb')) {
+    return `missing xBound file for ${benchmark}`;
+  }
+  const queryData = getCurrentQueryData();
+  if (!queryData) return '';
+
+  const hasAnyXboundEstimate = SYSTEMS.some((system) => Number.isFinite(Number(queryData.xbound?.[system])));
+  if (hasAnyXboundEstimate) return '';
+
+  if (!benchmarkSupportsXboundParamVariants(benchmark)) {
+    return 'xBound estimates are not available for this benchmark/query.';
+  }
+  return 'xBound estimates are not available for the current benchmark/query.';
+}
+
 function buildEstimateEntries(includeXBound) {
   const queryData = getCurrentQueryData();
   if (!queryData) return [];
@@ -507,6 +551,7 @@ function renderQErrorBarPlot(entries) {
   const margin = { top: 88, right: 26, bottom: 76, left: 68 };
   const width = cssWidth - margin.left - margin.right;
   const height = cssHeight - margin.top - margin.bottom;
+  const xboundAvailabilityWarning = currentXboundAvailabilityWarning();
   const baselineY = margin.top + height / 2;
   const xboundOverlay = xboundOverlayEntry();
   const lpboundOverlay = lpboundOverlayEntry();
@@ -543,6 +588,7 @@ function renderQErrorBarPlot(entries) {
   ctx.clearRect(0, 0, cssWidth, cssHeight);
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, cssWidth, cssHeight);
+  if (xboundAvailabilityWarning) return;
 
   const maxExp = Math.max(1, Math.ceil(Math.log10(maxAbsQ)));
   const tickQs = [1];
@@ -1387,8 +1433,32 @@ function syncSqlInput() {
   else els.sqlInput.value = sqlText;
 
   const benchmarkWarning = benchmarkLoadWarnings.get(els.benchmarkSelect.value);
+  const xboundWarning = currentXboundAvailabilityWarning();
+  if (els.xboundWarning) {
+    const queryData = getCurrentQueryData();
+    const showXboundBanner = Boolean(queryData) || Boolean(xboundWarning);
+    if (showXboundBanner && xboundWarning) {
+      els.xboundWarning.textContent = `⚠️\u00A0\u00A0${xboundWarning}`;
+      els.xboundWarning.classList.remove('is-loaded');
+      els.xboundWarning.classList.add('is-warning');
+      els.xboundWarning.classList.remove('hidden');
+    } else if (showXboundBanner) {
+      els.xboundWarning.textContent = '✅\u00A0\u00A0xBound estimates loaded for current benchmark/query.';
+      els.xboundWarning.classList.remove('is-warning');
+      els.xboundWarning.classList.add('is-loaded');
+      els.xboundWarning.classList.remove('hidden');
+    } else {
+      els.xboundWarning.textContent = '';
+      els.xboundWarning.classList.remove('is-warning', 'is-loaded');
+      els.xboundWarning.classList.add('hidden');
+    }
+  }
   if (benchmarkWarning) {
     els.statusText.textContent = `Warning: ${benchmarkWarning}`;
+    return;
+  }
+  if (xboundWarning) {
+    els.statusText.textContent = `Warning: ${xboundWarning}`;
     return;
   }
   if (queryData && Number.isFinite(queryData.actual)) {
@@ -1528,10 +1598,18 @@ async function ensureBenchmarkLoaded(benchmark) {
 }
 
 async function refreshForXboundSliderChange() {
-  if (els.benchmarkSelect.value !== 'SO-CEB') return;
+  const benchmark = els.benchmarkSelect.value;
+  if (!benchmarkSupportsXboundParamVariants(benchmark)) {
+    syncSqlInput();
+    const entries = activeEntries();
+    if (currentMode === 'run') renderQErrorBarPlot(entries);
+    if (currentMode === 'leaderboard') renderLeaderboard();
+    return;
+  }
   const refreshSeq = ++xboundSliderRefreshSeq;
   customQueryData = null;
-  await ensureBenchmarkLoaded('SO-CEB');
+  els.statusText.textContent = 'Updating xBound estimates for current parameters...';
+  await ensureBenchmarkLoaded(benchmark);
   if (refreshSeq !== xboundSliderRefreshSeq) return;
   updateQuerySelector();
   const entries = activeEntries();

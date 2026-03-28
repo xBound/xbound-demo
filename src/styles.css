@@ -383,6 +383,27 @@ body {
   opacity: 0.78;
 }
 
+.xbound-warning {
+  margin-top: 8px;
+  border-radius: 2px;
+  padding: 8px 10px;
+  font-size: 0.82rem;
+  line-height: 1.25;
+  font-weight: 400;
+}
+
+.xbound-warning.is-warning {
+  border: 1px solid #e8b2b2;
+  background: #fff1f1;
+  color: #8d1f1f;
+}
+
+.xbound-warning.is-loaded {
+  border: 1px solid #b8dcc4;
+  background: #effaf2;
+  color: #1f6d38;
+}
+
 select {
   height: 38px;
   border: 1px solid var(--line);
