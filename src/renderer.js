@@ -54,6 +54,7 @@ const WEB_DATA_BASE = IS_ELECTRON ? './data/benchmarks' : `${WEB_BASE_PATH}data/
 
 let queryStore = Object.fromEntries(BENCHMARKS.map((name) => [name, {}]));
 const loadedBenchmarks = new Set();
+const benchmarkDataCache = new Map();
 let customQueryData = null;
 const systemIconCache = {};
 let iconRedrawRaf = 0;
@@ -712,13 +713,13 @@ function renderQErrorBarPlot(entries) {
       ctx.font = `${PLOT_FONT.warningPx}px ${UI_FONT_FAMILY}`;
       const warningText = '⚠️ Query not supported in xBound';
       const textWidth = ctx.measureText(warningText).width;
-      ctx.fillText(warningText, cssWidth - margin.right - textWidth - 4, margin.top - 12);
+      ctx.fillText(warningText, cssWidth - margin.right - textWidth - 4, margin.top - 24);
     } else if (xboundOverlay.zeroLowerBound) {
       ctx.fillStyle = '#a36a00';
       ctx.font = `${PLOT_FONT.warningPx}px ${UI_FONT_FAMILY}`;
       const warningText = '⚠️ Lower bound is 0';
       const textWidth = ctx.measureText(warningText).width;
-      ctx.fillText(warningText, cssWidth - margin.right - textWidth - 4, margin.top - 12);
+      ctx.fillText(warningText, cssWidth - margin.right - textWidth - 4, margin.top - 24);
     } else {
     const lineY = y(xboundOverlay.signedQError);
     ctx.strokeStyle = boundLineColor;
@@ -1407,6 +1408,7 @@ function populateSelectors() {
 function updateQuerySelector() {
   const benchmark = els.benchmarkSelect.value;
   const queries = Object.keys(queryStore[benchmark] || {});
+  const previousSelection = els.querySelect.value;
 
   els.querySelect.innerHTML = '';
   queries.forEach((q) => {
@@ -1421,6 +1423,8 @@ function updateQuerySelector() {
     option.value = '';
     option.textContent = 'No precomputed queries loaded';
     els.querySelect.appendChild(option);
+  } else if (previousSelection && queries.includes(previousSelection)) {
+    els.querySelect.value = previousSelection;
   }
 
   syncSqlInput();
@@ -1508,6 +1512,10 @@ function updateXboundParamsState() {
   if (!els.xboundParams) return;
 }
 
+function cloneQueryMap(queries) {
+  return JSON.parse(JSON.stringify(queries || {}));
+}
+
 function discreteSliderValue(el, fallback) {
   if (!el) return fallback;
   const rawValues = String(el.dataset.values || '')
@@ -1538,6 +1546,11 @@ function syncXboundSliderLabels() {
 
 async function ensureBenchmarkLoaded(benchmark) {
   const cacheKey = xboundParamCacheKey(benchmark);
+  if (benchmarkDataCache.has(cacheKey)) {
+    queryStore[benchmark] = cloneQueryMap(benchmarkDataCache.get(cacheKey));
+    benchmarkLoadWarnings.delete(benchmark);
+    return;
+  }
   if (loadedBenchmarks.has(cacheKey)) return;
   loadedBenchmarks.add(cacheKey);
 
@@ -1578,13 +1591,16 @@ async function ensureBenchmarkLoaded(benchmark) {
         };
       });
     }
-    queryStore[benchmark] = nextQueries;
+    benchmarkDataCache.set(cacheKey, cloneQueryMap(nextQueries));
+    if (xboundParamCacheKey(benchmark) !== cacheKey) return;
+    queryStore[benchmark] = cloneQueryMap(nextQueries);
     benchmarkLoadWarnings.delete(benchmark);
     if (benchmark === els.benchmarkSelect.value) {
       els.statusText.textContent = `Loaded precomputed estimates from ${estimateResult.sourcePath}`;
     }
   } catch (err) {
     loadedBenchmarks.delete(cacheKey);
+    if (xboundParamCacheKey(benchmark) !== cacheKey) return;
     queryStore[benchmark] = {};
     if (err?.code === 'MISSING_XBOUND_FILE') {
       benchmarkLoadWarnings.set(benchmark, `missing xBound file for ${err.benchmark} (${err.fileName})`);
