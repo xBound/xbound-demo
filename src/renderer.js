@@ -636,12 +636,17 @@ function renderQErrorBarPlot(entries) {
     !xboundOverlay.zeroLowerBound &&
     Number.isFinite(xboundOverlay.signedQError)
   );
+  const hasZeroLowerBound = Boolean(
+    xboundOverlay &&
+    !xboundOverlay.unsupported &&
+    xboundOverlay.zeroLowerBound
+  );
   const hasUpperBoundLine = Boolean(
     lpboundOverlay &&
     Number.isFinite(lpboundOverlay.signedQError)
   );
-  if (hasLowerBoundLine && hasUpperBoundLine) {
-    const lowerY = y(xboundOverlay.signedQError);
+  if ((hasLowerBoundLine || hasZeroLowerBound) && hasUpperBoundLine) {
+    const lowerY = hasZeroLowerBound ? (margin.top + height) : y(xboundOverlay.signedQError);
     const upperY = y(lpboundOverlay.signedQError);
     const topY = Math.min(lowerY, upperY);
     const bandHeight = Math.max(1, Math.abs(upperY - lowerY));
@@ -679,15 +684,21 @@ function renderQErrorBarPlot(entries) {
 
     const icon = loadSystemIcon('xbound');
     if (icon && icon._xboundState === 'ready' && icon.complete && icon.naturalWidth > 0) {
+      const iconSize = 20;
+      const gap = 7;
       const estimateLabel = Number.isFinite(xboundOverlay.estimate)
         ? formatCardinality(xboundOverlay.estimate)
         : String(xboundOverlay.estimate);
-      const lowerBoundLabel = `lower bound: ${estimateLabel}`;
+      const lowerBoundLabel = `xBound: ${estimateLabel}`;
       ctx.fillStyle = '#1f2a4d';
       ctx.font = ESTIMATE_FONT;
       const textWidth = ctx.measureText(lowerBoundLabel).width;
-      const lowerLabelX = cssWidth - margin.right - textWidth - 8;
-      ctx.fillText(lowerBoundLabel, lowerLabelX, lineY + 22);
+      const pairWidth = iconSize + gap + textWidth;
+      const pairX = cssWidth - margin.right - pairWidth - 8;
+      const textY = lineY + 22;
+      const iconY = textY - iconSize + 5;
+      ctx.drawImage(icon, pairX, iconY, iconSize, iconSize);
+      ctx.fillText(lowerBoundLabel, pairX + iconSize + gap, textY);
     }
     }
   }
@@ -703,7 +714,7 @@ function renderQErrorBarPlot(entries) {
     const estimateLabel = Number.isFinite(lpboundOverlay.estimate)
       ? formatCardinality(lpboundOverlay.estimate)
       : String(lpboundOverlay.estimate);
-    const upperBoundLabel = `🏠 upper bound: ${estimateLabel}`;
+    const upperBoundLabel = `🏠 LpBound: ${estimateLabel}`;
     ctx.fillStyle = '#1f2a4d';
     ctx.font = ESTIMATE_FONT;
     const textWidth = ctx.measureText(upperBoundLabel).width;
@@ -804,6 +815,15 @@ function renderHtmlLegend() {
     item.innerHTML = `<img src="${icon}" alt="${label}" /><span>${label}</span>`;
     els.chartLegend.appendChild(item);
   });
+  const lowerItem = document.createElement('span');
+  lowerItem.className = 'chart-legend-item';
+  lowerItem.innerHTML = `<img src="${SYSTEM_ICON_PATHS.xbound || ''}" alt="xBound" /><span>xBound</span>`;
+  els.chartLegend.appendChild(lowerItem);
+
+  const upperItem = document.createElement('span');
+  upperItem.className = 'chart-legend-item';
+  upperItem.innerHTML = `<span aria-hidden="true">🏠</span><span>LpBound</span>`;
+  els.chartLegend.appendChild(upperItem);
 }
 
 function systemKeyForEntry(systemLabel) {

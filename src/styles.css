@@ -440,7 +440,7 @@ option {
 #chartCanvas {
   display: block;
   width: 100%;
-  height: clamp(220px, 32vh, 340px);
+  height: clamp(300px, 44vh, 500px);
   max-width: 100%;
   border: 1px solid #e3e8f5;
   border-radius: 2px;
