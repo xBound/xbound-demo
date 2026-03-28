@@ -157,6 +157,7 @@ const els = {
   runPanel: document.getElementById('runPanel'),
   planPanel: document.getElementById('planPanel'),
   leaderboardPanel: document.getElementById('leaderboardPanel'),
+  chartLegend: document.getElementById('chartLegend'),
   chartCanvas: document.getElementById('chartCanvas'),
   planTree: document.getElementById('planTree'),
   leaderboardList: document.getElementById('leaderboardList')
@@ -530,11 +531,14 @@ function renderQErrorBarPlot(entries) {
     return margin.top + height - ratio * height;
   };
 
-  const xStep = width / Math.max(1, SYSTEMS.length);
+  const clusterWidth = width * (SYSTEMS.length <= 2 ? 0.45 : 0.6);
+  const clusterStartX = margin.left + (width - clusterWidth) / 2;
+  const xStep = clusterWidth / Math.max(1, SYSTEMS.length);
   const stemWidth = 2;
   const iconHeadSize = Math.max(28, Math.min(44, xStep * 0.42));
   const entryBySystem = new Map(entries.map((entry) => [systemKeyForEntry(entry.system), entry]));
   const benchmarkWarning = benchmarkLoadWarnings.get(els.benchmarkSelect.value) || '';
+  const boundLineColor = '#8f8f8f';
 
   ctx.clearRect(0, 0, cssWidth, cssHeight);
   ctx.fillStyle = '#ffffff';
@@ -620,11 +624,35 @@ function renderQErrorBarPlot(entries) {
     ? `actual: ${formatCardinality(actualBaseline)}`
     : 'actual';
   ctx.fillText(baselineLabel, margin.left + 8, baselineY - 8);
-  drawLegend(ctx, cssWidth / 2, 18);
   if (benchmarkWarning) {
     ctx.fillStyle = '#a33a3a';
     ctx.font = `${PLOT_FONT.warningPx}px ${UI_FONT_FAMILY}`;
     ctx.fillText(`⚠️ ${benchmarkWarning}`, margin.left + 8, margin.top - 12);
+  }
+
+  const hasLowerBoundLine = Boolean(
+    xboundOverlay &&
+    !xboundOverlay.unsupported &&
+    !xboundOverlay.zeroLowerBound &&
+    Number.isFinite(xboundOverlay.signedQError)
+  );
+  const hasUpperBoundLine = Boolean(
+    lpboundOverlay &&
+    Number.isFinite(lpboundOverlay.signedQError)
+  );
+  if (hasLowerBoundLine && hasUpperBoundLine) {
+    const lowerY = y(xboundOverlay.signedQError);
+    const upperY = y(lpboundOverlay.signedQError);
+    const topY = Math.min(lowerY, upperY);
+    const bandHeight = Math.max(1, Math.abs(upperY - lowerY));
+    const plotWidth = cssWidth - margin.left - margin.right;
+    const plotTop = margin.top;
+    const plotHeight = height;
+    ctx.fillStyle = 'rgba(245, 150, 150, 0.10)';
+    ctx.fillRect(margin.left, plotTop, plotWidth, Math.max(0, topY - plotTop));
+    ctx.fillRect(margin.left, topY + bandHeight, plotWidth, Math.max(0, plotTop + plotHeight - (topY + bandHeight)));
+    ctx.fillStyle = 'rgba(156, 216, 156, 0.18)';
+    ctx.fillRect(margin.left, topY, plotWidth, bandHeight);
   }
 
   if (xboundOverlay) {
@@ -642,7 +670,7 @@ function renderQErrorBarPlot(entries) {
       ctx.fillText(warningText, cssWidth - margin.right - textWidth - 4, margin.top - 12);
     } else {
     const lineY = y(xboundOverlay.signedQError);
-    ctx.strokeStyle = SYSTEM_COLORS.xbound;
+    ctx.strokeStyle = boundLineColor;
     ctx.lineWidth = 5;
     ctx.beginPath();
     ctx.moveTo(margin.left, lineY);
@@ -651,31 +679,21 @@ function renderQErrorBarPlot(entries) {
 
     const icon = loadSystemIcon('xbound');
     if (icon && icon._xboundState === 'ready' && icon.complete && icon.naturalWidth > 0) {
-      const iconSize = 22;
       const estimateLabel = Number.isFinite(xboundOverlay.estimate)
         ? formatCardinality(xboundOverlay.estimate)
         : String(xboundOverlay.estimate);
       const lowerBoundLabel = `lower bound: ${estimateLabel}`;
       ctx.fillStyle = '#1f2a4d';
       ctx.font = ESTIMATE_FONT;
-      const gap = 8;
       const textWidth = ctx.measureText(lowerBoundLabel).width;
-      const pairWidth = iconSize + gap + textWidth;
-      const minPairX = margin.left + 4;
-      const maxPairX = cssWidth - margin.right - pairWidth - 4;
-      const preferredPairX = cssWidth - margin.right - pairWidth - 8;
-      const pairX = Math.max(minPairX, Math.min(maxPairX, preferredPairX));
-      const iconX = pairX;
-      const textX = iconX + iconSize + gap;
-      const iconY = lineY - iconSize - 6;
-      ctx.drawImage(icon, iconX, iconY, iconSize, iconSize);
-      ctx.fillText(lowerBoundLabel, textX, lineY - 10);
+      const lowerLabelX = cssWidth - margin.right - textWidth - 8;
+      ctx.fillText(lowerBoundLabel, lowerLabelX, lineY + 22);
     }
     }
   }
   if (lpboundOverlay) {
     const lineY = y(lpboundOverlay.signedQError);
-    ctx.strokeStyle = '#8f8f8f';
+    ctx.strokeStyle = boundLineColor;
     ctx.lineWidth = 5;
     ctx.beginPath();
     ctx.moveTo(margin.left, lineY);
@@ -689,13 +707,14 @@ function renderQErrorBarPlot(entries) {
     ctx.fillStyle = '#1f2a4d';
     ctx.font = ESTIMATE_FONT;
     const textWidth = ctx.measureText(upperBoundLabel).width;
-    ctx.fillText(upperBoundLabel, cssWidth - margin.right - textWidth - 8, lineY - 10);
+    const upperLabelX = cssWidth - margin.right - textWidth - 8;
+    ctx.fillText(upperBoundLabel, upperLabelX, lineY - 10);
   }
 
   SYSTEMS.forEach((system, idx) => {
     const entry = entryBySystem.get(system);
     if (!entry) return;
-    const centerX = margin.left + xStep * idx + xStep / 2;
+    const centerX = clusterStartX + xStep * idx + xStep / 2;
     const barTop = y(entry.signedQError || entry.qError);
     const isXBound = entry.system.includes(XBOUND_SUFFIX);
     const colorKey = isXBound ? 'xbound' : systemKeyForEntry(entry.system);
@@ -771,6 +790,19 @@ function renderQErrorBarPlot(entries) {
       ctx.fillText(symbol, centerX - symbolWidth / 2, symbolY);
       ctx.font = ESTIMATE_FONT;
     }
+  });
+}
+
+function renderHtmlLegend() {
+  if (!els.chartLegend) return;
+  els.chartLegend.innerHTML = '';
+  SYSTEMS.forEach((key) => {
+    const label = SYSTEM_LABELS[key] || key;
+    const icon = SYSTEM_ICON_PATHS[key] || '';
+    const item = document.createElement('span');
+    item.className = 'chart-legend-item';
+    item.innerHTML = `<img src="${icon}" alt="${label}" /><span>${label}</span>`;
+    els.chartLegend.appendChild(item);
   });
 }
 
@@ -1653,7 +1685,8 @@ async function init() {
     populateSelectors();
     syncXboundSliderLabels();
     updateXboundParamsState();
-    bindEvents();
+  bindEvents();
+  renderHtmlLegend();
     setMode('run');
     window.requestAnimationFrame(() => {
       alignRunButtonToSqlText();

@@ -229,8 +229,30 @@ body {
 
 .controls-panel h2,
 .chart-panel h2 {
-  margin: 2px 0 6px;
+  margin: 2px 0 2px;
   font-size: 1rem;
+}
+
+#runPanel h2 {
+  margin: 0;
+  line-height: 1.1;
+}
+
+#runPanel .chart-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+#runPanel .chart-legend {
+  margin-top: 0;
+  margin-bottom: 0;
+  min-height: 20px;
+  line-height: 1;
+  justify-content: flex-end;
+  flex: 1 1 auto;
 }
 
 .xbound-params {
@@ -387,6 +409,32 @@ option {
   grid-row: 2 / 3;
   padding: 14px;
   overflow: hidden;
+}
+
+.chart-legend {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  min-height: 24px;
+  margin: 0 0 8px;
+  padding-top: 0;
+  color: #1f2a4d;
+  font-size: 0.95rem;
+}
+
+.chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+.chart-legend-item img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
 }
 
 #chartCanvas {
