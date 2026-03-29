@@ -1007,6 +1007,7 @@ function upperBoundForSystem(queryData, system) {
 function buildBenchmarkLeaderboardMetrics(benchmark, boundMode = { xbound: true, lpbound: true }) {
   const useXbound = Boolean(boundMode?.xbound);
   const useLpbound = Boolean(boundMode?.lpbound);
+  const hasAnyBounds = useXbound || useLpbound;
   const sanity = new Map(
     SYSTEMS.map((system) => [system, {
       system,
@@ -1019,10 +1020,11 @@ function buildBenchmarkLeaderboardMetrics(benchmark, boundMode = { xbound: true,
     }])
   );
   const quality = new Map(
-    SYSTEMS.flatMap((system) => ([
-      [system, { system, clipped: false, qErrors: [] }],
-      [`${system}::xbounded`, { system, clipped: true, qErrors: [] }]
-    ]))
+    SYSTEMS.flatMap((system) => {
+      const rows = [[system, { system, clipped: false, qErrors: [] }]];
+      if (hasAnyBounds) rows.push([`${system}::xbounded`, { system, clipped: true, qErrors: [] }]);
+      return rows;
+    })
   );
 
   Object.values(queryStore[benchmark] || {}).forEach((queryData) => {
@@ -1063,9 +1065,11 @@ function buildBenchmarkLeaderboardMetrics(benchmark, boundMode = { xbound: true,
       if (useXbound) {
         clippedEstimate = Number.isFinite(lb) ? Math.max(clippedEstimate, lb) : clippedEstimate;
       }
-      const clippedQ = Math.max(clippedEstimate / actual, actual / clippedEstimate);
-      const clippedRow = quality.get(`${system}::xbounded`);
-      clippedRow.qErrors.push(clippedQ);
+      if (hasAnyBounds) {
+        const clippedQ = Math.max(clippedEstimate / actual, actual / clippedEstimate);
+        const clippedRow = quality.get(`${system}::xbounded`);
+        clippedRow.qErrors.push(clippedQ);
+      }
     });
   });
 
@@ -1148,6 +1152,7 @@ function leaderboardVariantIconMarkup(system, clipped, label, boundMode = { xbou
 function renderLeaderboard() {
   const benchmark = els.benchmarkSelect.value;
   const { sanityRows, qualityRows } = buildBenchmarkLeaderboardMetrics(benchmark, qerrorBoundMode);
+  const hasAnyBounds = Boolean(qerrorBoundMode?.xbound) || Boolean(qerrorBoundMode?.lpbound);
 
   els.leaderboardList.innerHTML = '';
   if (sanityRows.length === 0 && qualityRows.length === 0) {
@@ -1313,6 +1318,16 @@ function renderLeaderboard() {
       const clippedText = pack.clipped
         ? `median Q-error: <span class="metric-value">${pack.clipped.medianQError.toFixed(1)}x</span>`
         : 'no data';
+      const boundedVariantBlock = hasAnyBounds ? `
+          <div class="quality-variant">
+            <span class="variant-chip variant-chip-combo">
+              ${boundModeBadgeMarkup(qerrorBoundMode)}
+              <span>Bounded System</span>
+              <img class="variant-chip-icon" src="${icon}" alt="${label}" />
+            </span>
+            <span class="metric-down">↓ ${clippedText}</span>
+          </div>
+      ` : '';
       const card = document.createElement('div');
       card.className = 'quality-card';
       card.innerHTML = `
@@ -1325,14 +1340,7 @@ function renderLeaderboard() {
             <span class="variant-chip">raw</span>
             <span>${rawText}</span>
           </div>
-          <div class="quality-variant">
-            <span class="variant-chip variant-chip-combo">
-              ${boundModeBadgeMarkup(qerrorBoundMode)}
-              <span>Bounded System</span>
-              <img class="variant-chip-icon" src="${icon}" alt="${label}" />
-            </span>
-            <span class="metric-down">↓ ${clippedText}</span>
-          </div>
+          ${boundedVariantBlock}
         </div>
       `;
       qualityCards.appendChild(card);
