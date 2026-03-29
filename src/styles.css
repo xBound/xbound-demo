@@ -144,7 +144,7 @@ body {
   grid-row: 1 / 2;
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr);
-  min-height: clamp(170px, 26vh, 230px);
+  min-height: clamp(145px, 20vh, 190px);
 }
 
 .sql-left-action {
@@ -585,6 +585,11 @@ option {
   height: 88%;
 }
 
+.motivation-slide[data-slide="2"].is-active {
+  justify-content: center;
+  padding-top: 0;
+}
+
 @keyframes motivation-arrow-pop {
   0% {
     transform: translateY(-50%) translateZ(0) scale(1.75, 1);
@@ -1022,6 +1027,10 @@ option {
   color: #1f5f3c;
 }
 
+.metric-bounded {
+  color: #1f5f3c;
+}
+
 .leaderboard-system-icon {
   width: 20px;
   height: 20px;
@@ -1062,6 +1071,40 @@ option {
   font-weight: 700;
 }
 
+.leaderboard-qerror-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  border: 1px solid var(--line);
+}
+
+.leaderboard-qerror-table th,
+.leaderboard-qerror-table td {
+  border: 1px solid #ececf0;
+  padding: 8px 10px;
+  font-size: 0.9rem;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.leaderboard-qerror-table thead th {
+  background: #f7f8fc;
+  color: #2d3550;
+  font-weight: 700;
+}
+
+.leaderboard-qerror-table td.rank {
+  font-weight: 700;
+}
+
+.leaderboard-qerror-table td.system {
+  text-align: left;
+  white-space: normal;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .hidden {
   display: none;
 }
@@ -1079,6 +1122,7 @@ option {
 .app-shell.leaderboard-mode #leaderboardPanel {
   grid-column: 2 / 4;
   grid-row: 2 / 3;
+  margin-top: -18px;
   background: transparent;
   border: 0;
   box-shadow: none;
@@ -1086,7 +1130,7 @@ option {
 }
 
 .app-shell.leaderboard-mode #leaderboardPanel h2 {
-  margin: 10px 0 14px;
+  margin: 0 0 6px;
   padding: 0;
   text-align: center;
   font-size: 1.24rem;

@@ -180,6 +180,7 @@ const benchmarkLoadWarnings = new Map();
 let xboundSliderRefreshTimer = 0;
 let xboundSliderRefreshSeq = 0;
 let syncedPanelHeight = 0;
+const MAX_SYNCED_PANEL_HEIGHT = 220;
 
 function benchmarkSlug(benchmark) {
   const b = String(benchmark || '').trim().toLowerCase();
@@ -1152,7 +1153,6 @@ function leaderboardVariantIconMarkup(system, clipped, label, boundMode = { xbou
 function renderLeaderboard() {
   const benchmark = els.benchmarkSelect.value;
   const { sanityRows, qualityRows } = buildBenchmarkLeaderboardMetrics(benchmark, qerrorBoundMode);
-  const hasAnyBounds = Boolean(qerrorBoundMode?.xbound) || Boolean(qerrorBoundMode?.lpbound);
 
   els.leaderboardList.innerHTML = '';
   if (sanityRows.length === 0 && qualityRows.length === 0) {
@@ -1297,54 +1297,61 @@ function renderLeaderboard() {
       `;
       podium.appendChild(card);
     });
-    const bySystem = new Map(SYSTEMS.map((system) => [system, { raw: null, clipped: null }]));
+    const bySystem = new Map(SYSTEMS.map((system) => [system, { raw: null, bounded: null }]));
     qualityRows.forEach((row) => {
       const holder = bySystem.get(row.system);
       if (!holder) return;
-      if (row.clipped) holder.clipped = row;
+      if (row.clipped) holder.bounded = row;
       else holder.raw = row;
     });
 
-    const qualityCards = document.createElement('div');
-    qualityCards.className = 'quality-cards';
-    SYSTEMS.forEach((system) => {
-      const pack = bySystem.get(system);
-      if (!pack || (!pack.raw && !pack.clipped)) return;
-      const label = SYSTEM_LABELS[system] || system;
-      const icon = SYSTEM_ICON_PATHS[system] || '';
-      const rawText = pack.raw
-        ? `median Q-error: <span class="metric-value">${pack.raw.medianQError.toFixed(1)}x</span>`
-        : 'no data';
-      const clippedText = pack.clipped
-        ? `median Q-error: <span class="metric-value">${pack.clipped.medianQError.toFixed(1)}x</span>`
-        : 'no data';
-      const boundedVariantBlock = hasAnyBounds ? `
-          <div class="quality-variant">
-            <span class="variant-chip variant-chip-combo">
-              ${boundModeBadgeMarkup(qerrorBoundMode)}
-              <span>Bounded System</span>
-              <img class="variant-chip-icon" src="${icon}" alt="${label}" />
-            </span>
-            <span class="metric-down">↓ ${clippedText}</span>
-          </div>
-      ` : '';
-      const card = document.createElement('div');
-      card.className = 'quality-card';
-      card.innerHTML = `
-        <div class="quality-card-header">
-          <img class="leaderboard-system-icon" src="${icon}" alt="${label}" />
-          <span>${label}</span>
-        </div>
-        <div class="quality-variants">
-          <div class="quality-variant">
-            <span class="variant-chip">raw</span>
-            <span>${rawText}</span>
-          </div>
-          ${boundedVariantBlock}
-        </div>
-      `;
-      qualityCards.appendChild(card);
-    });
+    const simpleRows = SYSTEMS
+      .map((system) => {
+        const pack = bySystem.get(system);
+        if (!pack || (!pack.raw && !pack.bounded)) return null;
+        const raw = pack.raw?.score ?? null;
+        const bounded = pack.bounded?.score ?? null;
+        return {
+          system,
+          label: SYSTEM_LABELS[system] || system,
+          icon: SYSTEM_ICON_PATHS[system] || '',
+          raw,
+          bounded
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => {
+        const aScore = Number.isFinite(a.bounded) ? a.bounded : a.raw;
+        const bScore = Number.isFinite(b.bounded) ? b.bounded : b.raw;
+        if (!Number.isFinite(aScore) && !Number.isFinite(bScore)) return 0;
+        if (!Number.isFinite(aScore)) return 1;
+        if (!Number.isFinite(bScore)) return -1;
+        return aScore - bScore;
+      });
+
+    const qualityTable = document.createElement('table');
+    qualityTable.className = 'leaderboard-qerror-table';
+    qualityTable.innerHTML = `
+      <thead>
+        <tr>
+          <th>System</th>
+          <th>Raw</th>
+          <th>Bounded</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${simpleRows.map((row) => `
+          <tr>
+            <td class="system">
+              <img class="leaderboard-system-icon" src="${row.icon}" alt="${row.label}" />
+              ${row.label}
+            </td>
+            <td>${Number.isFinite(row.raw) ? `<span class="metric-value">${row.raw.toFixed(1)}x</span>` : 'n/a'}</td>
+            <td>${Number.isFinite(row.bounded) ? `<span class="metric-value metric-bounded">${row.bounded.toFixed(1)}x</span>` : 'n/a'}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    `;
     const qualityLayout = document.createElement('div');
     qualityLayout.className = 'leaderboard-split';
     const qualityPodiumPanel = document.createElement('div');
@@ -1353,7 +1360,7 @@ function renderLeaderboard() {
     qualityLayout.appendChild(qualityPodiumPanel);
     const qualityPanel = document.createElement('div');
     qualityPanel.className = 'leaderboard-right-panel';
-    qualityPanel.appendChild(qualityCards);
+    qualityPanel.appendChild(qualityTable);
     qualityLayout.appendChild(qualityPanel);
     els.leaderboardList.appendChild(qualityLayout);
   }
@@ -1437,7 +1444,7 @@ function syncRailButtonSizing() {
     return;
   }
 
-  const syncedHeight = syncedPanelHeight;
+  const syncedHeight = Math.min(syncedPanelHeight, MAX_SYNCED_PANEL_HEIGHT);
   const paddingTop = parseFloat(railStyle.paddingTop) || 0;
   const paddingBottom = parseFloat(railStyle.paddingBottom) || 0;
   const gap = parseFloat(railStyle.rowGap || railStyle.gap) || 0;
