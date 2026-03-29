@@ -152,20 +152,26 @@ const els = {
   xboundWarning: document.getElementById('xboundWarning'),
   planSystemSelect: document.getElementById('planSystemSelect'),
   planControls: document.getElementById('planControls'),
+  motivationBtn: document.getElementById('motivationBtn'),
   dashboardTabBtn: document.getElementById('dashboardTabBtn'),
   runBtn: document.getElementById('runBtn'),
   planViewBtn: document.getElementById('planViewBtn'),
   leaderboardBtn: document.getElementById('leaderboardBtn'),
+  motivationPanel: document.getElementById('motivationPanel'),
   runPanel: document.getElementById('runPanel'),
   planPanel: document.getElementById('planPanel'),
   leaderboardPanel: document.getElementById('leaderboardPanel'),
+  motivationPrevBtn: document.getElementById('motivationPrevBtn'),
+  motivationNextBtn: document.getElementById('motivationNextBtn'),
+  motivationSlides: Array.from(document.querySelectorAll('.motivation-slide')),
   chartLegend: document.getElementById('chartLegend'),
   chartCanvas: document.getElementById('chartCanvas'),
   planTree: document.getElementById('planTree'),
   leaderboardList: document.getElementById('leaderboardList')
 };
 
-let currentMode = 'run';
+let currentMode = 'motivation';
+let motivationSlideIndex = 0;
 let sqlEditor = null;
 const supportsCustomQuery = typeof window.xbound?.estimateCustomQuery === 'function';
 let leaderboardTab = 'sanity';
@@ -1282,7 +1288,7 @@ function alignRunButtonToSqlText() {
 }
 
 function syncRailButtonSizing() {
-  if (!els.navRail || !els.dashboardTabBtn || !els.leaderboardBtn) return;
+  if (!els.navRail) return;
   const xboundRect = els.xboundPanel?.getBoundingClientRect?.();
   if (xboundRect && Number.isFinite(xboundRect.height) && xboundRect.height > 0) {
     syncedPanelHeight = xboundRect.height;
@@ -1324,7 +1330,7 @@ function syncRailButtonSizing() {
       els.sqlPanel.style.minHeight = '';
       els.sqlPanel.style.maxHeight = '';
     }
-    [els.dashboardTabBtn, els.leaderboardBtn].forEach((btn) => {
+    [els.motivationBtn, els.dashboardTabBtn, els.leaderboardBtn].filter(Boolean).forEach((btn) => {
       btn.style.height = '';
       btn.style.minHeight = '';
       btn.style.maxHeight = '';
@@ -1336,7 +1342,8 @@ function syncRailButtonSizing() {
   const paddingTop = parseFloat(railStyle.paddingTop) || 0;
   const paddingBottom = parseFloat(railStyle.paddingBottom) || 0;
   const gap = parseFloat(railStyle.rowGap || railStyle.gap) || 0;
-  const buttons = [els.dashboardTabBtn, els.leaderboardBtn];
+  const buttons = [els.motivationBtn, els.dashboardTabBtn, els.leaderboardBtn].filter(Boolean);
+  if (buttons.length === 0) return;
   const totalGap = gap * Math.max(0, buttons.length - 1);
   const innerHeight = Math.max(0, syncedHeight - paddingTop - paddingBottom - totalGap);
   const buttonHeightPx = `${innerHeight / buttons.length}px`;
@@ -1350,7 +1357,7 @@ function syncRailButtonSizing() {
     els.controlsPanel.style.minHeight = railHeightPx;
     els.controlsPanel.style.maxHeight = railHeightPx;
   }
-  if (els.sqlPanel && currentMode !== 'leaderboard') {
+  if (els.sqlPanel && currentMode !== 'leaderboard' && currentMode !== 'motivation') {
     els.sqlPanel.style.height = railHeightPx;
     els.sqlPanel.style.minHeight = railHeightPx;
     els.sqlPanel.style.maxHeight = railHeightPx;
@@ -1362,22 +1369,43 @@ function syncRailButtonSizing() {
   });
 }
 
+function renderMotivationSlide() {
+  const slides = els.motivationSlides || [];
+  if (slides.length === 0) return;
+  const clampedIdx = Math.max(0, Math.min(slides.length - 1, motivationSlideIndex));
+  motivationSlideIndex = clampedIdx;
+  slides.forEach((slide, idx) => {
+    slide.classList.toggle('is-active', idx === clampedIdx);
+  });
+  if (els.motivationPrevBtn) {
+    els.motivationPrevBtn.classList.toggle('hidden', clampedIdx === 0);
+  }
+  if (els.motivationNextBtn) {
+    els.motivationNextBtn.classList.toggle('hidden', clampedIdx === slides.length - 1);
+  }
+}
+
 function setMode(mode) {
   currentMode = mode;
+  if (els.motivationBtn) els.motivationBtn.classList.toggle('active', mode === 'motivation');
   if (els.dashboardTabBtn) els.dashboardTabBtn.classList.toggle('active', mode === 'run' || mode === 'plan');
   if (els.planViewBtn) els.planViewBtn.classList.toggle('active', mode === 'plan');
   els.leaderboardBtn.classList.toggle('active', mode === 'leaderboard');
 
+  if (els.motivationPanel) els.motivationPanel.classList.toggle('hidden', mode !== 'motivation');
   els.runPanel.classList.toggle('hidden', mode !== 'run');
   els.planPanel.classList.toggle('hidden', mode !== 'plan');
   els.leaderboardPanel.classList.toggle('hidden', mode !== 'leaderboard');
-  if (els.sqlPanel) els.sqlPanel.classList.toggle('hidden', mode === 'leaderboard');
+  if (els.sqlPanel) els.sqlPanel.classList.toggle('hidden', mode === 'leaderboard' || mode === 'motivation');
+  if (els.controlsPanel) els.controlsPanel.classList.toggle('hidden', mode === 'motivation');
+  if (els.xboundPanel) els.xboundPanel.classList.toggle('hidden', mode === 'motivation');
   if (els.appShell) els.appShell.classList.toggle('leaderboard-mode', mode === 'leaderboard');
 
   els.planControls.classList.toggle('hidden', mode !== 'plan');
-  if (els.queryControls) els.queryControls.classList.toggle('hidden', mode === 'leaderboard');
+  if (els.queryControls) els.queryControls.classList.toggle('hidden', mode === 'leaderboard' || mode === 'motivation');
 
   const entries = activeEntries();
+  if (mode === 'motivation') renderMotivationSlide();
   if (mode === 'run') renderQErrorBarPlot(entries);
   if (mode === 'plan') renderPlanTree(els.planSystemSelect.value);
   if (mode === 'leaderboard') renderLeaderboard();
@@ -1760,6 +1788,26 @@ function bindEvents() {
     });
   }
 
+  if (els.motivationBtn) {
+    els.motivationBtn.addEventListener('click', () => {
+      setMode('motivation');
+      els.statusText.textContent = 'Motivation opened';
+    });
+  }
+
+  if (els.motivationNextBtn) {
+    els.motivationNextBtn.addEventListener('click', () => {
+      motivationSlideIndex += 1;
+      renderMotivationSlide();
+    });
+  }
+  if (els.motivationPrevBtn) {
+    els.motivationPrevBtn.addEventListener('click', () => {
+      motivationSlideIndex -= 1;
+      renderMotivationSlide();
+    });
+  }
+
   els.leaderboardBtn.addEventListener('click', () => {
     setMode('leaderboard');
     renderLeaderboard();
@@ -1804,7 +1852,7 @@ async function init() {
     updateXboundParamsState();
   bindEvents();
   renderHtmlLegend();
-    setMode('run');
+    setMode('motivation');
     window.requestAnimationFrame(() => {
       alignRunButtonToSqlText();
       syncRailButtonSizing();

@@ -432,6 +432,82 @@ option {
   overflow: hidden;
 }
 
+#motivationPanel {
+  grid-column: 2 / 4;
+  grid-row: 1 / 3;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+#motivationPanel.hidden {
+  display: none;
+}
+
+.motivation-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.motivation-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.motivation-arrow-btn {
+  border: 1px solid #ced6ea;
+  background: linear-gradient(180deg, #ffffff 0%, #edf2ff 100%);
+  color: #1f366d;
+  border-radius: 999px;
+  width: 44px;
+  height: 44px;
+  font-size: 1.2rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(24, 45, 97, 0.14);
+}
+
+.motivation-arrow-btn:hover {
+  background: linear-gradient(180deg, #ffffff 0%, #e3ecff 100%);
+}
+
+.motivation-stage {
+  position: relative;
+  min-height: clamp(320px, 70vh, 760px);
+  border: 1px solid #dde4f5;
+  border-radius: 4px;
+  background: radial-gradient(circle at top right, #f4f7ff 0%, #ffffff 46%);
+  overflow: hidden;
+}
+
+.motivation-slide {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  transform: translateX(20px);
+  transition: opacity 240ms ease, transform 240ms ease;
+  margin: 0;
+  pointer-events: none;
+}
+
+.motivation-slide.is-active {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+}
+
+.motivation-slide img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
 .chart-legend {
   display: flex;
   align-items: center;
@@ -882,6 +958,11 @@ option {
   }
 
   .chart-panel {
+    grid-row: auto;
+  }
+
+  #motivationPanel {
+    grid-column: 1 / 2;
     grid-row: auto;
   }
 }

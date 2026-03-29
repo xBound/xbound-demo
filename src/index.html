@@ -17,7 +17,8 @@
 
       <main class="layout-grid">
         <aside class="nav-rail card" aria-label="View navigation">
-          <button id="dashboardTabBtn" class="rail-btn active" aria-label="Dashboard" title="Dashboard">📊</button>
+          <button id="motivationBtn" class="rail-btn active" aria-label="Motivation" title="Motivation">🎯</button>
+          <button id="dashboardTabBtn" class="rail-btn" aria-label="Dashboard" title="Dashboard">📊</button>
           <button id="leaderboardBtn" class="rail-btn" aria-label="Leaderboard" title="Leaderboard">🏆</button>
         </aside>
 
@@ -95,7 +96,7 @@
 
         <section class="chart-panel card" id="runPanel">
           <div class="chart-header-row">
-            <h2>Q-Error vs Actual (y = 1 Baseline)</h2>
+            <h2>Soundness and Q-error</h2>
             <div id="chartLegend" class="chart-legend" aria-label="Systems legend"></div>
           </div>
           <canvas id="chartCanvas"></canvas>
@@ -109,6 +110,24 @@
         <section class="chart-panel card hidden" id="leaderboardPanel">
           <h2>Leaderboard</h2>
           <div id="leaderboardList" class="leaderboard-list"></div>
+        </section>
+
+        <section class="chart-panel card" id="motivationPanel">
+          <div class="motivation-header-row">
+            <h2>Motivation</h2>
+            <div class="motivation-nav" aria-label="Motivation slides">
+              <button id="motivationPrevBtn" class="motivation-arrow-btn hidden" aria-label="Previous motivation slide" title="Previous slide">←</button>
+              <button id="motivationNextBtn" class="motivation-arrow-btn" aria-label="Next motivation slide" title="Next slide">→</button>
+            </div>
+          </div>
+          <div class="motivation-stage">
+            <figure class="motivation-slide is-active" data-slide="0">
+              <img src="../images/production-cpu-count.png" alt="CPU in production over time" />
+            </figure>
+            <figure class="motivation-slide" data-slide="1">
+              <img src="../images/xbounded-systems.png" alt="xBound-ed systems overview" />
+            </figure>
+          </div>
         </section>
       </main>
     </div>
