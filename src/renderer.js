@@ -1400,7 +1400,6 @@ function setMode(mode) {
   if (els.controlsPanel) els.controlsPanel.classList.toggle('hidden', mode === 'motivation');
   if (els.xboundPanel) els.xboundPanel.classList.toggle('hidden', mode === 'motivation');
   if (els.appShell) els.appShell.classList.toggle('leaderboard-mode', mode === 'leaderboard');
-  if (els.appShell) els.appShell.classList.toggle('motivation-mode', mode === 'motivation');
 
   els.planControls.classList.toggle('hidden', mode !== 'plan');
   if (els.queryControls) els.queryControls.classList.toggle('hidden', mode === 'leaderboard' || mode === 'motivation');
@@ -1851,8 +1850,10 @@ async function init() {
     populateSelectors();
     syncXboundSliderLabels();
     updateXboundParamsState();
-  bindEvents();
-  renderHtmlLegend();
+    bindEvents();
+    renderHtmlLegend();
+    // Capture the baseline rail height while dashboard panels are still visible.
+    syncRailButtonSizing();
     setMode('motivation');
     window.requestAnimationFrame(() => {
       alignRunButtonToSqlText();

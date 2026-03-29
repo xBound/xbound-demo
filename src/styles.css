@@ -541,11 +541,6 @@ option {
   }
 }
 
-.app-shell.motivation-mode #motivationPanel {
-  height: calc(100vh - 120px);
-  max-height: calc(100vh - 120px);
-}
-
 .chart-legend {
   display: flex;
   align-items: center;
