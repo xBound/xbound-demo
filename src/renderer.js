@@ -1400,6 +1400,7 @@ function setMode(mode) {
   if (els.controlsPanel) els.controlsPanel.classList.toggle('hidden', mode === 'motivation');
   if (els.xboundPanel) els.xboundPanel.classList.toggle('hidden', mode === 'motivation');
   if (els.appShell) els.appShell.classList.toggle('leaderboard-mode', mode === 'leaderboard');
+  if (els.appShell) els.appShell.classList.toggle('motivation-mode', mode === 'motivation');
 
   els.planControls.classList.toggle('hidden', mode !== 'plan');
   if (els.queryControls) els.queryControls.classList.toggle('hidden', mode === 'leaderboard' || mode === 'motivation');

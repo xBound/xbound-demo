@@ -438,6 +438,8 @@ option {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  overflow: visible;
+  min-height: 0;
 }
 
 #motivationPanel.hidden {
@@ -477,35 +479,43 @@ option {
 
 .motivation-stage {
   position: relative;
-  min-height: clamp(320px, 70vh, 760px);
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid #dde4f5;
   border-radius: 4px;
-  background: radial-gradient(circle at top right, #f4f7ff 0%, #ffffff 46%);
+  background: #ffffff;
   overflow: hidden;
+  padding: 0;
 }
 
 .motivation-slide {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  opacity: 0;
-  transform: translateX(20px);
-  transition: opacity 240ms ease, transform 240ms ease;
+  display: none;
   margin: 0;
-  pointer-events: none;
+  width: 100%;
+  height: 100%;
 }
 
 .motivation-slide.is-active {
-  opacity: 1;
-  transform: translateX(0);
-  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .motivation-slide img {
-  width: 100%;
-  height: 100%;
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
   object-fit: contain;
+}
+
+.app-shell.motivation-mode #motivationPanel {
+  height: calc(100vh - 120px);
+  max-height: calc(100vh - 120px);
 }
 
 .chart-legend {
