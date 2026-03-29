@@ -175,7 +175,7 @@ let motivationSlideIndex = 0;
 let sqlEditor = null;
 const supportsCustomQuery = typeof window.xbound?.estimateCustomQuery === 'function';
 let leaderboardTab = 'sanity';
-let qerrorBoundMode = 'xbound';
+let qerrorBoundMode = { xbound: true, lpbound: true };
 const benchmarkLoadWarnings = new Map();
 let xboundSliderRefreshTimer = 0;
 let xboundSliderRefreshSeq = 0;
@@ -1004,7 +1004,9 @@ function upperBoundForSystem(queryData, system) {
   return Number.isFinite(ub) && ub > 0 ? ub : null;
 }
 
-function buildBenchmarkLeaderboardMetrics(benchmark, boundMode = 'xbound') {
+function buildBenchmarkLeaderboardMetrics(benchmark, boundMode = { xbound: true, lpbound: true }) {
+  const useXbound = Boolean(boundMode?.xbound);
+  const useLpbound = Boolean(boundMode?.lpbound);
   const sanity = new Map(
     SYSTEMS.map((system) => [system, {
       system,
@@ -1055,10 +1057,11 @@ function buildBenchmarkLeaderboardMetrics(benchmark, boundMode = 'xbound') {
       rawRow.qErrors.push(rawQ);
 
       let clippedEstimate = estimate;
-      if (boundMode === 'lpbound') {
-        clippedEstimate = Number.isFinite(ub) ? Math.min(estimate, ub) : estimate;
-      } else {
-        clippedEstimate = Number.isFinite(lb) ? Math.max(estimate, lb) : estimate;
+      if (useLpbound) {
+        clippedEstimate = Number.isFinite(ub) ? Math.min(clippedEstimate, ub) : clippedEstimate;
+      }
+      if (useXbound) {
+        clippedEstimate = Number.isFinite(lb) ? Math.max(clippedEstimate, lb) : clippedEstimate;
       }
       const clippedQ = Math.max(clippedEstimate / actual, actual / clippedEstimate);
       const clippedRow = quality.get(`${system}::xbounded`);
@@ -1117,19 +1120,27 @@ function buildBenchmarkLeaderboardMetrics(benchmark, boundMode = 'xbound') {
   return { sanityRows, qualityRows };
 }
 
-function leaderboardVariantIconMarkup(system, clipped, label, boundMode = 'xbound') {
+function boundModeBadgeMarkup(boundMode = { xbound: true, lpbound: true }) {
+  const useXbound = Boolean(boundMode?.xbound);
+  const useLpbound = Boolean(boundMode?.lpbound);
+  const xboundBadge = `<img class="podium-icon icon-xbound" src="${SYSTEM_ICON_PATHS.xbound || ''}" alt="xBound" />`;
+  const lpboundBadge = '<span class="icon-lpbound" aria-label="LpBound">🛖</span>';
+  if (useXbound && !useLpbound) return xboundBadge;
+  if (!useXbound && useLpbound) return lpboundBadge;
+  if (!useXbound && !useLpbound) return '';
+  return `<span class="leaderboard-icon-bounds">${xboundBadge}<span class="icon-plus">+</span>${lpboundBadge}</span>`;
+}
+
+function leaderboardVariantIconMarkup(system, clipped, label, boundMode = { xbound: true, lpbound: true }) {
   const systemIcon = SYSTEM_ICON_PATHS[system] || '';
   if (!clipped) {
     return `<img class="podium-icon" src="${systemIcon}" alt="${label}" />`;
   }
-  const boundBadge = boundMode === 'lpbound'
-    ? '<span class="icon-plus">LpBound</span>'
-    : `<img class="podium-icon icon-xbound" src="${SYSTEM_ICON_PATHS.xbound || ''}" alt="xBound" />`;
   return `
     <span class="leaderboard-icon-ed" aria-label="${label}">
       <img class="podium-icon icon-system" src="${systemIcon}" alt="${label}" />
       <span class="icon-plus">+</span>
-      ${boundBadge}
+      ${boundModeBadgeMarkup(boundMode)}
     </span>
   `;
 }
@@ -1238,23 +1249,29 @@ function renderLeaderboard() {
 
   if (leaderboardTab === 'qerror' && qualityRows.length > 0) {
     const modeControls = document.createElement('div');
-    modeControls.className = 'leaderboard-tabs';
-    const xboundModeBtn = document.createElement('button');
-    xboundModeBtn.className = `leaderboard-tab-btn${qerrorBoundMode === 'xbound' ? ' active' : ''}`;
-    xboundModeBtn.textContent = '+ xBound';
-    xboundModeBtn.addEventListener('click', () => {
-      qerrorBoundMode = 'xbound';
-      renderLeaderboard();
+    modeControls.className = 'leaderboard-mode-controls';
+    modeControls.innerHTML = `
+      <span class="leaderboard-mode-label">Bounded system:</span>
+      <label class="leaderboard-mode-option">
+        <input type="checkbox" name="qerrorBoundModeXbound" ${qerrorBoundMode.xbound ? 'checked' : ''} />
+        <span>+ <img class="leaderboard-mode-icon" src="${SYSTEM_ICON_PATHS.xbound || ''}" alt="xBound" /> xBound</span>
+      </label>
+      <label class="leaderboard-mode-option">
+        <input type="checkbox" name="qerrorBoundModeLpbound" ${qerrorBoundMode.lpbound ? 'checked' : ''} />
+        <span>+ 🛖 LpBound</span>
+      </label>
+    `;
+    modeControls.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+      input.addEventListener('change', () => {
+        const xboundInput = modeControls.querySelector('input[name="qerrorBoundModeXbound"]');
+        const lpboundInput = modeControls.querySelector('input[name="qerrorBoundModeLpbound"]');
+        qerrorBoundMode = {
+          xbound: Boolean(xboundInput?.checked),
+          lpbound: Boolean(lpboundInput?.checked)
+        };
+        renderLeaderboard();
+      });
     });
-    const lpboundModeBtn = document.createElement('button');
-    lpboundModeBtn.className = `leaderboard-tab-btn${qerrorBoundMode === 'lpbound' ? ' active' : ''}`;
-    lpboundModeBtn.textContent = '+ LpBound';
-    lpboundModeBtn.addEventListener('click', () => {
-      qerrorBoundMode = 'lpbound';
-      renderLeaderboard();
-    });
-    modeControls.appendChild(xboundModeBtn);
-    modeControls.appendChild(lpboundModeBtn);
     els.leaderboardList.appendChild(modeControls);
 
     const podium = document.createElement('div');
@@ -1296,13 +1313,6 @@ function renderLeaderboard() {
       const clippedText = pack.clipped
         ? `median Q-error: <span class="metric-value">${pack.clipped.medianQError.toFixed(1)}x</span>`
         : 'no data';
-      const improvement = (pack.raw && pack.clipped)
-        ? `${(((pack.raw.medianQError - pack.clipped.medianQError) / pack.raw.medianQError) * 100).toFixed(1)}% improvement`
-        : 'insufficient data';
-      const boundedBadge = qerrorBoundMode === 'lpbound'
-        ? '<span>+ LpBound</span>'
-        : `<img class="variant-chip-icon" src="${SYSTEM_ICON_PATHS.xbound || ''}" alt="xBound" />`;
-
       const card = document.createElement('div');
       card.className = 'quality-card';
       card.innerHTML = `
@@ -1317,14 +1327,13 @@ function renderLeaderboard() {
           </div>
           <div class="quality-variant">
             <span class="variant-chip variant-chip-combo">
-              ${boundedBadge}
+              ${boundModeBadgeMarkup(qerrorBoundMode)}
               <span>Bounded System</span>
               <img class="variant-chip-icon" src="${icon}" alt="${label}" />
             </span>
             <span class="metric-down">↓ ${clippedText}</span>
           </div>
         </div>
-        <div class="quality-improvement">${improvement}</div>
       `;
       qualityCards.appendChild(card);
     });
@@ -1904,7 +1913,6 @@ function bindEvents() {
 }
 
 async function init() {
-  els.appName.textContent = window.xbound?.appName || 'xBound (Web)';
   try {
     if (window.CodeMirror && els.sqlInput) {
       sqlEditor = window.CodeMirror.fromTextArea(els.sqlInput, {
