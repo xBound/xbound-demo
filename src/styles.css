@@ -446,35 +446,51 @@ option {
   display: none;
 }
 
-.motivation-header-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
 .motivation-nav {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
 }
 
 .motivation-arrow-btn {
-  border: 1px solid #ced6ea;
-  background: linear-gradient(180deg, #ffffff 0%, #edf2ff 100%);
-  color: #1f366d;
-  border-radius: 999px;
-  width: 44px;
-  height: 44px;
-  font-size: 1.2rem;
-  font-weight: 700;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 0;
+  background: transparent;
+  color: #9aa3b9;
+  border-radius: 2px;
+  width: 64px;
+  height: 76px;
+  padding: 0 6px;
+  font-size: 3.5rem;
+  font-weight: 300;
+  font-family: "Times New Roman", Georgia, serif;
+  transform-origin: center;
   line-height: 1;
   cursor: pointer;
-  box-shadow: 0 4px 14px rgba(24, 45, 97, 0.14);
+  pointer-events: auto;
+  transition: color 140ms ease, background-color 140ms ease;
 }
 
 .motivation-arrow-btn:hover {
-  background: linear-gradient(180deg, #ffffff 0%, #e3ecff 100%);
+  color: #9aa3b9;
+  background: transparent;
+  animation: none;
+}
+
+.motivation-arrow-btn:active {
+  animation: none;
+  background: transparent;
+}
+
+#motivationPrevBtn {
+  left: 10px;
+}
+
+#motivationNextBtn {
+  right: 10px;
 }
 
 .motivation-stage {
@@ -508,9 +524,21 @@ option {
   display: block;
   width: auto;
   height: auto;
-  max-width: 100%;
-  max-height: 100%;
+  max-width: 86%;
+  max-height: 86%;
   object-fit: contain;
+}
+
+@keyframes motivation-arrow-pop {
+  0% {
+    transform: translateY(-50%) translateZ(0) scale(1.75, 1);
+  }
+  45% {
+    transform: translateY(-50%) translateZ(0) scale(2, 1.12);
+  }
+  100% {
+    transform: translateY(-50%) translateZ(0) scale(1.75, 1);
+  }
 }
 
 .app-shell.motivation-mode #motivationPanel {
