@@ -38,6 +38,7 @@ async function build() {
 
   const webIndex = srcIndex
     .replaceAll('../icons/', './icons/')
+    .replaceAll('../images/', './images/')
     .replace('href="./styles.css"', `href="./styles.css?v=${buildVersion}"`)
     .replace('src="./renderer.js"', `src="./renderer.js?v=${buildVersion}"`)
     .replace(
@@ -49,6 +50,7 @@ async function build() {
   await copyFile(path.join(ROOT, 'src', 'styles.css'), path.join(DIST, 'styles.css'));
   await copyFile(path.join(ROOT, 'src', 'renderer.js'), path.join(DIST, 'renderer.js'));
   await copyDir(path.join(ROOT, 'icons'), path.join(DIST, 'icons'));
+  await copyDir(path.join(ROOT, 'images'), path.join(DIST, 'images'));
   await copyDir(path.join(ROOT, 'data'), path.join(DIST, 'data'));
   await fs.writeFile(path.join(DIST, '.nojekyll'), '', 'utf8');
 

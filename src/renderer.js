@@ -175,6 +175,7 @@ let motivationSlideIndex = 0;
 let sqlEditor = null;
 const supportsCustomQuery = typeof window.xbound?.estimateCustomQuery === 'function';
 let leaderboardTab = 'sanity';
+let qerrorBoundMode = 'xbound';
 const benchmarkLoadWarnings = new Map();
 let xboundSliderRefreshTimer = 0;
 let xboundSliderRefreshSeq = 0;
@@ -998,9 +999,22 @@ function lowerBoundForSystem(queryData, system) {
   return Number.isFinite(lb) && lb > 0 ? lb : null;
 }
 
-function buildBenchmarkLeaderboardMetrics(benchmark) {
+function upperBoundForSystem(queryData, system) {
+  const ub = Number(queryData?.lpbound?.[system]);
+  return Number.isFinite(ub) && ub > 0 ? ub : null;
+}
+
+function buildBenchmarkLeaderboardMetrics(benchmark, boundMode = 'xbound') {
   const sanity = new Map(
-    SYSTEMS.map((system) => [system, { system, checks: 0, violations: 0, violationRatios: [] }])
+    SYSTEMS.map((system) => [system, {
+      system,
+      lowerChecks: 0,
+      lowerViolations: 0,
+      lowerViolationRatios: [],
+      upperChecks: 0,
+      upperViolations: 0,
+      upperViolationRatios: []
+    }])
   );
   const quality = new Map(
     SYSTEMS.flatMap((system) => ([
@@ -1017,13 +1031,22 @@ function buildBenchmarkLeaderboardMetrics(benchmark) {
       const estimate = estimateForSystem(queryData, system);
       if (!Number.isFinite(estimate)) return;
       const lb = lowerBoundForSystem(queryData, system);
+      const ub = upperBoundForSystem(queryData, system);
 
       if (Number.isFinite(lb)) {
         const sanityRow = sanity.get(system);
-        sanityRow.checks += 1;
+        sanityRow.lowerChecks += 1;
         if (estimate < lb) {
-          sanityRow.violations += 1;
-          sanityRow.violationRatios.push(lb / estimate);
+          sanityRow.lowerViolations += 1;
+          sanityRow.lowerViolationRatios.push(lb / estimate);
+        }
+      }
+      if (Number.isFinite(ub)) {
+        const sanityRow = sanity.get(system);
+        sanityRow.upperChecks += 1;
+        if (estimate > ub) {
+          sanityRow.upperViolations += 1;
+          sanityRow.upperViolationRatios.push(estimate / ub);
         }
       }
 
@@ -1031,7 +1054,12 @@ function buildBenchmarkLeaderboardMetrics(benchmark) {
       const rawRow = quality.get(system);
       rawRow.qErrors.push(rawQ);
 
-      const clippedEstimate = Number.isFinite(lb) ? Math.max(estimate, lb) : estimate;
+      let clippedEstimate = estimate;
+      if (boundMode === 'lpbound') {
+        clippedEstimate = Number.isFinite(ub) ? Math.min(estimate, ub) : estimate;
+      } else {
+        clippedEstimate = Number.isFinite(lb) ? Math.max(estimate, lb) : estimate;
+      }
       const clippedQ = Math.max(clippedEstimate / actual, actual / clippedEstimate);
       const clippedRow = quality.get(`${system}::xbounded`);
       clippedRow.qErrors.push(clippedQ);
@@ -1039,21 +1067,35 @@ function buildBenchmarkLeaderboardMetrics(benchmark) {
   });
 
   const sanityRows = [...sanity.values()]
-    .filter((row) => row.checks > 0)
+    .filter((row) => row.lowerChecks > 0 || row.upperChecks > 0)
     .map((row) => {
-      const violationRate = row.checks > 0 ? row.violations / row.checks : 0;
-      const medianSeverity = row.violationRatios.length ? median(row.violationRatios) : 1;
+      const lowerViolationRate = row.lowerChecks > 0 ? row.lowerViolations / row.lowerChecks : 0;
+      const upperViolationRate = row.upperChecks > 0 ? row.upperViolations / row.upperChecks : 0;
+      const totalChecks = row.lowerChecks + row.upperChecks;
+      const totalViolations = row.lowerViolations + row.upperViolations;
+      const combinedViolationRate = totalChecks > 0 ? totalViolations / totalChecks : 0;
+      const lowerMedianSeverity = row.lowerViolationRatios.length ? median(row.lowerViolationRatios) : 1;
+      const upperMedianSeverity = row.upperViolationRatios.length ? median(row.upperViolationRatios) : 1;
       return {
         system: row.system,
         label: SYSTEM_LABELS[row.system] || row.system,
         icon: SYSTEM_ICON_PATHS[row.system] || null,
-        checks: row.checks,
-        violations: row.violations,
-        violationRate,
-        medianSeverity
+        lowerChecks: row.lowerChecks,
+        lowerViolations: row.lowerViolations,
+        lowerViolationRate,
+        lowerMedianSeverity,
+        upperChecks: row.upperChecks,
+        upperViolations: row.upperViolations,
+        upperViolationRate,
+        upperMedianSeverity,
+        combinedViolationRate
       };
     })
-    .sort((a, b) => (a.violationRate - b.violationRate) || (a.medianSeverity - b.medianSeverity));
+    .sort((a, b) => (
+      (a.combinedViolationRate - b.combinedViolationRate) ||
+      (a.lowerMedianSeverity - b.lowerMedianSeverity) ||
+      (a.upperMedianSeverity - b.upperMedianSeverity)
+    ));
 
   const qualityRows = [...quality.values()]
     .filter((row) => row.qErrors.length > 0)
@@ -1075,24 +1117,26 @@ function buildBenchmarkLeaderboardMetrics(benchmark) {
   return { sanityRows, qualityRows };
 }
 
-function leaderboardVariantIconMarkup(system, clipped, label) {
+function leaderboardVariantIconMarkup(system, clipped, label, boundMode = 'xbound') {
   const systemIcon = SYSTEM_ICON_PATHS[system] || '';
   if (!clipped) {
     return `<img class="podium-icon" src="${systemIcon}" alt="${label}" />`;
   }
-  const xboundIcon = SYSTEM_ICON_PATHS.xbound || '';
+  const boundBadge = boundMode === 'lpbound'
+    ? '<span class="icon-plus">LpBound</span>'
+    : `<img class="podium-icon icon-xbound" src="${SYSTEM_ICON_PATHS.xbound || ''}" alt="xBound" />`;
   return `
     <span class="leaderboard-icon-ed" aria-label="${label}">
       <img class="podium-icon icon-system" src="${systemIcon}" alt="${label}" />
       <span class="icon-plus">+</span>
-      <img class="podium-icon icon-xbound" src="${xboundIcon}" alt="xBound" />
+      ${boundBadge}
     </span>
   `;
 }
 
 function renderLeaderboard() {
   const benchmark = els.benchmarkSelect.value;
-  const { sanityRows, qualityRows } = buildBenchmarkLeaderboardMetrics(benchmark);
+  const { sanityRows, qualityRows } = buildBenchmarkLeaderboardMetrics(benchmark, qerrorBoundMode);
 
   els.leaderboardList.innerHTML = '';
   if (sanityRows.length === 0 && qualityRows.length === 0) {
@@ -1132,37 +1176,52 @@ function renderLeaderboard() {
       card.innerHTML = `
         <div class="podium-top">
           <img class="podium-icon" src="${row.icon || ''}" alt="${row.label}" />
-          <div class="podium-score">${(row.violationRate * 100).toFixed(1)}% violations</div>
-          <div class="podium-meta">severity ${row.medianSeverity.toFixed(2)}x</div>
+          <div class="podium-score">${(row.combinedViolationRate * 100).toFixed(1)}% violations</div>
+          <div class="podium-meta">LB ${row.lowerMedianSeverity.toFixed(2)}x | UB ${row.upperMedianSeverity.toFixed(2)}x</div>
         </div>
         <div class="podium-step">#${idx + 1}</div>
       `;
       sanityPodium.appendChild(card);
     });
-    const sanityCards = document.createElement('div');
-    sanityCards.className = 'quality-cards sanity-cards';
+    const sanityTable = document.createElement('table');
+    sanityTable.className = 'leaderboard-soundness-table';
+    sanityTable.innerHTML = `
+      <thead>
+        <tr>
+          <th rowspan="2">#</th>
+          <th rowspan="2">System</th>
+          <th colspan="2">%violations</th>
+          <th colspan="2">severity</th>
+          <th rowspan="2">Total Violations</th>
+        </tr>
+        <tr>
+          <th>Lower bound</th>
+          <th>Upper bound</th>
+          <th>Lower bound</th>
+          <th>Upper bound</th>
+        </tr>
+      </thead>
+    `;
+    const tbody = document.createElement('tbody');
     sanityRows.forEach((row, idx) => {
-      const card = document.createElement('div');
-      card.className = 'quality-card';
-      card.innerHTML = `
-        <div class="quality-card-header">
-          <span class="leaderboard-col rank">${idx + 1}</span>
+      const totalChecks = row.lowerChecks + row.upperChecks;
+      const totalViolations = row.lowerViolations + row.upperViolations;
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="rank">${idx + 1}</td>
+        <td class="system">
           <img class="leaderboard-system-icon" src="${row.icon || ''}" alt="${row.label}" />
           <span>${row.label}</span>
-        </div>
-        <div class="quality-variants">
-          <div class="quality-variant">
-            <span class="variant-chip">violations</span>
-            <span>${(row.violationRate * 100).toFixed(1)}% (${row.violations}/${row.checks})</span>
-          </div>
-          <div class="quality-variant">
-            <span class="variant-chip">severity</span>
-            <span>median ${row.medianSeverity.toFixed(2)}x</span>
-          </div>
-        </div>
+        </td>
+        <td>${(row.lowerViolationRate * 100).toFixed(1)}%</td>
+        <td>${(row.upperViolationRate * 100).toFixed(1)}%</td>
+        <td>${row.lowerMedianSeverity.toFixed(2)}x</td>
+        <td>${row.upperMedianSeverity.toFixed(2)}x</td>
+        <td>${totalChecks > 0 ? `${(row.combinedViolationRate * 100).toFixed(1)}% (${totalViolations}/${totalChecks})` : 'n/a'}</td>
       `;
-      sanityCards.appendChild(card);
+      tbody.appendChild(tr);
     });
+    sanityTable.appendChild(tbody);
 
     const sanityLayout = document.createElement('div');
     sanityLayout.className = 'leaderboard-split';
@@ -1172,12 +1231,32 @@ function renderLeaderboard() {
     sanityLayout.appendChild(sanityPodiumPanel);
     const sanityPanel = document.createElement('div');
     sanityPanel.className = 'leaderboard-right-panel';
-    sanityPanel.appendChild(sanityCards);
+    sanityPanel.appendChild(sanityTable);
     sanityLayout.appendChild(sanityPanel);
     els.leaderboardList.appendChild(sanityLayout);
   }
 
   if (leaderboardTab === 'qerror' && qualityRows.length > 0) {
+    const modeControls = document.createElement('div');
+    modeControls.className = 'leaderboard-tabs';
+    const xboundModeBtn = document.createElement('button');
+    xboundModeBtn.className = `leaderboard-tab-btn${qerrorBoundMode === 'xbound' ? ' active' : ''}`;
+    xboundModeBtn.textContent = '+ xBound';
+    xboundModeBtn.addEventListener('click', () => {
+      qerrorBoundMode = 'xbound';
+      renderLeaderboard();
+    });
+    const lpboundModeBtn = document.createElement('button');
+    lpboundModeBtn.className = `leaderboard-tab-btn${qerrorBoundMode === 'lpbound' ? ' active' : ''}`;
+    lpboundModeBtn.textContent = '+ LpBound';
+    lpboundModeBtn.addEventListener('click', () => {
+      qerrorBoundMode = 'lpbound';
+      renderLeaderboard();
+    });
+    modeControls.appendChild(xboundModeBtn);
+    modeControls.appendChild(lpboundModeBtn);
+    els.leaderboardList.appendChild(modeControls);
+
     const podium = document.createElement('div');
     podium.className = 'leaderboard-podium';
     const podiumOrder = [1, 0, 2];
@@ -1188,7 +1267,7 @@ function renderLeaderboard() {
       card.className = `podium-card rank-${idx + 1}`;
       card.innerHTML = `
         <div class="podium-top">
-          ${leaderboardVariantIconMarkup(row.system, row.clipped, row.label)}
+          ${leaderboardVariantIconMarkup(row.system, row.clipped, row.label, qerrorBoundMode)}
           <div class="podium-score">median Q-error: <span class="metric-value">${row.score.toFixed(1)}x</span></div>
           <div class="podium-meta">${row.queries} queries</div>
         </div>
@@ -1220,6 +1299,9 @@ function renderLeaderboard() {
       const improvement = (pack.raw && pack.clipped)
         ? `${(((pack.raw.medianQError - pack.clipped.medianQError) / pack.raw.medianQError) * 100).toFixed(1)}% improvement`
         : 'insufficient data';
+      const boundedBadge = qerrorBoundMode === 'lpbound'
+        ? '<span>+ LpBound</span>'
+        : `<img class="variant-chip-icon" src="${SYSTEM_ICON_PATHS.xbound || ''}" alt="xBound" />`;
 
       const card = document.createElement('div');
       card.className = 'quality-card';
@@ -1235,8 +1317,8 @@ function renderLeaderboard() {
           </div>
           <div class="quality-variant">
             <span class="variant-chip variant-chip-combo">
-              <img class="variant-chip-icon" src="${SYSTEM_ICON_PATHS.xbound || ''}" alt="xBound" />
-              <span>-ed</span>
+              ${boundedBadge}
+              <span>Bounded System</span>
               <img class="variant-chip-icon" src="${icon}" alt="${label}" />
             </span>
             <span class="metric-down">↓ ${clippedText}</span>

@@ -20,6 +20,7 @@ This generates `dist/` with:
 - `renderer.js`
 - `styles.css`
 - `icons/`
+- `images/`
 - `data/`
 - `.nojekyll`
 

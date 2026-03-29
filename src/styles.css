@@ -524,6 +524,7 @@ option {
   align-items: center;
   justify-content: flex-start;
   gap: 10px;
+  padding-top: 18px;
 }
 
 .motivation-slide-title {
@@ -550,8 +551,8 @@ option {
 }
 
 .motivation-slide[data-slide="0"] img {
-  width: 92%;
-  height: 92%;
+  width: 88%;
+  height: 88%;
 }
 
 @keyframes motivation-arrow-pop {
@@ -947,6 +948,40 @@ option {
   width: 20px;
   height: 20px;
   object-fit: contain;
+}
+
+.leaderboard-soundness-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  border: 1px solid var(--line);
+}
+
+.leaderboard-soundness-table th,
+.leaderboard-soundness-table td {
+  border: 1px solid #ececf0;
+  padding: 8px 10px;
+  font-size: 0.9rem;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.leaderboard-soundness-table thead th {
+  background: #f7f8fc;
+  color: #2d3550;
+  font-weight: 700;
+}
+
+.leaderboard-soundness-table td.system {
+  text-align: left;
+  white-space: normal;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.leaderboard-soundness-table td.rank {
+  font-weight: 700;
 }
 
 .hidden {
