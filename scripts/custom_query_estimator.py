@@ -211,6 +211,7 @@ def _cleanup_stale_custom_artifacts(root, benchmark):
   patterns = [
     str(workload_dir / f"{benchmark}-custom-*.jsonl"),
     str(est_dir / f"xbound::{benchmark}-custom-*_host=*.jsonl"),
+    str(est_dir / f"lpbound-10::{benchmark}-custom-*.jsonl"),
   ]
   for pattern in patterns:
     for p in glob(pattern):
@@ -319,6 +320,85 @@ def estimate_xbound_via_runpy(robust_root, benchmark, sql, parts, l0_theta, hh_t
         pass
 
 
+def estimate_lpbound_via_run_estimator(robust_root, benchmark, sql, query_tag=None):
+  root = Path(robust_root)
+  query_obj = _load_matching_workload_query(robust_root, benchmark, sql, query_tag=query_tag)
+  if not query_obj:
+    raise RuntimeError("No matching workload query found for run-estimator mode (need tag/config).")
+
+  query_obj = dict(query_obj)
+  query_obj["sql"] = _compact_sql(sql)
+  query_obj.setdefault("tag", "custom_q")
+  query_obj.setdefault("config", [])
+  dump_path = _dump_generated_workload(benchmark, query_obj)
+
+  workload_dir = root / "LpBound" / "benchmarks" / "workloads" / benchmark
+  workload_dir.mkdir(parents=True, exist_ok=True)
+  stage_token = next(tempfile._get_candidate_names())
+  tmp_workload_path = workload_dir / f"{benchmark}-custom-{stage_token}.jsonl"
+  shutil.copyfile(dump_path, tmp_workload_path)
+  workload_name = tmp_workload_path.stem
+
+  run_estimator = root / "src" / "scripts" / "py" / "run" / "run-estimator.py"
+  if not run_estimator.exists():
+    raise FileNotFoundError(f"run-estimator.py not found at {run_estimator}")
+
+  cmd = [
+    sys.executable,
+    str(run_estimator),
+    "lpbound-10",
+    workload_name,
+  ]
+  generated_file = root / "LpBound" / "benchmarks" / "est" / benchmark / f"lpbound-10::{workload_name}.jsonl"
+  try:
+    proc = subprocess.run(
+      cmd,
+      cwd=str(root / "src" / "xbound"),
+      check=False,
+      capture_output=True,
+      text=True,
+      timeout=300,
+    )
+    trace = (
+      f"cmd={cmd}\n"
+      f"cwd={root / 'src' / 'xbound'}\n"
+      f"returncode={proc.returncode}\n"
+      f"staged_workload={tmp_workload_path}\n"
+      f"dump={dump_path}\n"
+      f"stdout:\n{proc.stdout or '<empty>'}\n"
+      f"stderr:\n{proc.stderr or '<empty>'}"
+    )
+    if proc.returncode != 0:
+      raise RuntimeError(
+        "run-estimator.py failed "
+        f"(exit={proc.returncode}). "
+        f"trace:\n{trace}"
+      )
+    if not generated_file.exists():
+      raise RuntimeError(f"run-estimator.py finished but no lpbound output at {generated_file}")
+
+    with generated_file.open("r", encoding="utf-8") as f:
+      for line in f:
+        line = line.strip()
+        if not line:
+          continue
+        obj = json.loads(line)
+        lp_key = next((k for k in obj.keys() if str(k).lower().startswith("lpbound-")), None)
+        val = obj.get(lp_key) if lp_key else None
+        if val is not None:
+          return float(val), str(dump_path), (proc.stdout or ""), (proc.stderr or "")
+    raise RuntimeError(f"No lpbound value found in {generated_file}")
+  finally:
+    try:
+      tmp_workload_path.unlink(missing_ok=True)
+    except Exception:
+      pass
+    try:
+      generated_file.unlink(missing_ok=True)
+    except Exception:
+      pass
+
+
 def main():
   parser = argparse.ArgumentParser()
   parser.add_argument("--benchmark", required=True)
@@ -338,6 +418,7 @@ def main():
     "actual": None,
     "estimates": {},
     "xbound": {},
+    "lpbound": {},
     "errors": {},
     "debug": {},
   }
@@ -388,6 +469,23 @@ def main():
         result["xbound"]["fabric dw"] = xbound_est
     except Exception as e2:
       result["errors"]["xbound"] = f"{result['errors']['xbound']} | fallback failed: {e2}"
+
+  try:
+    lpbound_est, dump_path, lp_stdout, lp_stderr = estimate_lpbound_via_run_estimator(
+      args.robust_root,
+      benchmark,
+      sql,
+      query_tag=args.query_tag,
+    )
+    result["debug"]["lpbound_run_estimator_workload_dump"] = dump_path
+    result["debug"]["lpbound_run_estimator_stdout"] = lp_stdout
+    result["debug"]["lpbound_run_estimator_stderr"] = lp_stderr
+    if lpbound_est is not None:
+      result["lpbound"]["duckdb"] = lpbound_est
+      result["lpbound"]["postgres"] = lpbound_est
+      result["lpbound"]["fabric dw"] = lpbound_est
+  except Exception as e:
+    result["errors"]["lpbound"] = f"run-estimator mode failed: {e}"
 
   print(json.dumps(result))
 

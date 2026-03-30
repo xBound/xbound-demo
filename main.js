@@ -460,6 +460,7 @@ async function estimateCustomQuery(benchmarkName, sql, xboundParams = null, quer
       actual: null,
       estimates: {},
       xbound: {},
+      lpbound: {},
       errors: {
         estimator: 'No allowed Python env found. Activate your demo env (VIRTUAL_ENV) or set XBOUND_PYTHON.'
       },
@@ -514,6 +515,18 @@ async function estimateCustomQuery(benchmarkName, sql, xboundParams = null, quer
     if (parsed?.errors?.xbound) {
       console.error('[estimate-custom-query][xbound-runpy-error]', parsed.errors.xbound);
     }
+    if (parsed?.debug?.lpbound_run_estimator_workload_dump) {
+      console.error('[estimate-custom-query][lpbound-run-estimator-workload]', parsed.debug.lpbound_run_estimator_workload_dump);
+    }
+    if (parsed?.debug?.lpbound_run_estimator_stdout) {
+      console.error('[estimate-custom-query][lpbound-run-estimator-stdout]\n' + parsed.debug.lpbound_run_estimator_stdout);
+    }
+    if (parsed?.debug?.lpbound_run_estimator_stderr) {
+      console.error('[estimate-custom-query][lpbound-run-estimator-stderr]\n' + parsed.debug.lpbound_run_estimator_stderr);
+    }
+    if (parsed?.errors?.lpbound) {
+      console.error('[estimate-custom-query][lpbound-run-estimator-error]', parsed.errors.lpbound);
+    }
     if (parsed?.errors && Object.keys(parsed.errors).length) {
       console.error('[estimate-custom-query][system-errors]', parsed.errors);
     }
@@ -531,6 +544,7 @@ async function estimateCustomQuery(benchmarkName, sql, xboundParams = null, quer
       actual: null,
       estimates: {},
       xbound: {},
+      lpbound: {},
       errors: {
         estimator: error?.message || 'unknown estimator failure'
       },

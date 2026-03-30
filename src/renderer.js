@@ -1846,7 +1846,8 @@ function bindEvents() {
             ? actual
             : (Number.isFinite(Number(queryData?.actual)) && Number(queryData.actual) > 0 ? Number(queryData.actual) : 0),
           estimates: result?.estimates || {},
-          xbound: result?.xbound || {}
+          xbound: result?.xbound || {},
+          lpbound: result?.lpbound || {}
         };
         renderQErrorBarPlot(activeEntries());
         const numEntries = activeEntries().length;
@@ -1855,7 +1856,7 @@ function bindEvents() {
         } else if (result?.errors && Object.keys(result.errors).length) {
           els.statusText.textContent = 'Partial estimates produced. Check terminal logs for failures.';
         } else {
-          els.statusText.textContent = 'Custom query estimated (duckdb/postgres/xbound)';
+          els.statusText.textContent = 'Custom query estimated (duckdb/postgres/xbound/lpbound)';
         }
       } catch (err) {
         console.error('[custom-query-estimation][failed]', err);
