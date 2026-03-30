@@ -1012,12 +1012,12 @@ function buildBenchmarkLeaderboardMetrics(benchmark, boundMode = { xbound: true,
   const sanity = new Map(
     SYSTEMS.map((system) => [system, {
       system,
-      lowerChecks: 0,
+      queryChecks: 0,
       lowerViolations: 0,
       lowerViolationRatios: [],
-      upperChecks: 0,
       upperViolations: 0,
-      upperViolationRatios: []
+      upperViolationRatios: [],
+      anyViolations: 0
     }])
   );
   const quality = new Map(
@@ -1037,23 +1037,26 @@ function buildBenchmarkLeaderboardMetrics(benchmark, boundMode = { xbound: true,
       if (!Number.isFinite(estimate)) return;
       const lb = lowerBoundForSystem(queryData, system);
       const ub = upperBoundForSystem(queryData, system);
+      const sanityRow = sanity.get(system);
+      sanityRow.queryChecks += 1;
+
+      let violatedAnyBound = false;
 
       if (Number.isFinite(lb)) {
-        const sanityRow = sanity.get(system);
-        sanityRow.lowerChecks += 1;
         if (estimate < lb) {
           sanityRow.lowerViolations += 1;
           sanityRow.lowerViolationRatios.push(lb / estimate);
+          violatedAnyBound = true;
         }
       }
       if (Number.isFinite(ub)) {
-        const sanityRow = sanity.get(system);
-        sanityRow.upperChecks += 1;
         if (estimate > ub) {
           sanityRow.upperViolations += 1;
           sanityRow.upperViolationRatios.push(estimate / ub);
+          violatedAnyBound = true;
         }
       }
+      if (violatedAnyBound) sanityRow.anyViolations += 1;
 
       const rawQ = Math.max(estimate / actual, actual / estimate);
       const rawRow = quality.get(system);
@@ -1075,27 +1078,27 @@ function buildBenchmarkLeaderboardMetrics(benchmark, boundMode = { xbound: true,
   });
 
   const sanityRows = [...sanity.values()]
-    .filter((row) => row.lowerChecks > 0 || row.upperChecks > 0)
+    .filter((row) => row.queryChecks > 0)
     .map((row) => {
-      const lowerViolationRate = row.lowerChecks > 0 ? row.lowerViolations / row.lowerChecks : 0;
-      const upperViolationRate = row.upperChecks > 0 ? row.upperViolations / row.upperChecks : 0;
-      const totalChecks = row.lowerChecks + row.upperChecks;
-      const totalViolations = row.lowerViolations + row.upperViolations;
-      const combinedViolationRate = totalChecks > 0 ? totalViolations / totalChecks : 0;
+      const lowerViolationRate = row.queryChecks > 0 ? row.lowerViolations / row.queryChecks : 0;
+      const upperViolationRate = row.queryChecks > 0 ? row.upperViolations / row.queryChecks : 0;
+      const combinedViolationRate = row.queryChecks > 0 ? row.anyViolations / row.queryChecks : 0;
       const lowerMedianSeverity = row.lowerViolationRatios.length ? median(row.lowerViolationRatios) : 1;
       const upperMedianSeverity = row.upperViolationRatios.length ? median(row.upperViolationRatios) : 1;
       return {
         system: row.system,
         label: SYSTEM_LABELS[row.system] || row.system,
         icon: SYSTEM_ICON_PATHS[row.system] || null,
-        lowerChecks: row.lowerChecks,
+        queryChecks: row.queryChecks,
+        lowerChecks: row.queryChecks,
         lowerViolations: row.lowerViolations,
         lowerViolationRate,
         lowerMedianSeverity,
-        upperChecks: row.upperChecks,
+        upperChecks: row.queryChecks,
         upperViolations: row.upperViolations,
         upperViolationRate,
         upperMedianSeverity,
+        anyViolations: row.anyViolations,
         combinedViolationRate
       };
     })
@@ -1204,11 +1207,9 @@ function renderLeaderboard() {
     sanityTable.innerHTML = `
       <thead>
         <tr>
-          <th rowspan="2">#</th>
           <th rowspan="2">System</th>
           <th colspan="2">%violations</th>
           <th colspan="2">severity</th>
-          <th rowspan="2">Total Violations</th>
         </tr>
         <tr>
           <th>Lower bound</th>
@@ -1219,12 +1220,9 @@ function renderLeaderboard() {
       </thead>
     `;
     const tbody = document.createElement('tbody');
-    sanityRows.forEach((row, idx) => {
-      const totalChecks = row.lowerChecks + row.upperChecks;
-      const totalViolations = row.lowerViolations + row.upperViolations;
+    sanityRows.forEach((row) => {
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td class="rank">${idx + 1}</td>
         <td class="system">
           <img class="leaderboard-system-icon" src="${row.icon || ''}" alt="${row.label}" />
           <span>${row.label}</span>
@@ -1233,7 +1231,6 @@ function renderLeaderboard() {
         <td>${(row.upperViolationRate * 100).toFixed(1)}%</td>
         <td>${row.lowerMedianSeverity.toFixed(2)}x</td>
         <td>${row.upperMedianSeverity.toFixed(2)}x</td>
-        <td>${totalChecks > 0 ? `${(row.combinedViolationRate * 100).toFixed(1)}% (${totalViolations}/${totalChecks})` : 'n/a'}</td>
       `;
       tbody.appendChild(tr);
     });

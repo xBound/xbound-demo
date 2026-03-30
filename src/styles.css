@@ -1122,7 +1122,7 @@ option {
 .app-shell.leaderboard-mode #leaderboardPanel {
   grid-column: 2 / 4;
   grid-row: 2 / 3;
-  margin-top: -18px;
+  margin-top: 10px;
   background: transparent;
   border: 0;
   box-shadow: none;
