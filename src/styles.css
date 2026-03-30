@@ -595,8 +595,8 @@ option {
 }
 
 .motivation-slide[data-slide="0"] img {
-  width: 88%;
-  height: 88%;
+  width: 74%;
+  height: 74%;
 }
 
 .motivation-slide[data-slide="2"].is-active {
