@@ -1093,6 +1093,11 @@ option {
   font-weight: 700;
 }
 
+.metric-direction-good {
+  color: #16a34a;
+  font-weight: 800;
+}
+
 .leaderboard-qerror-table td.rank {
   font-weight: 700;
 }

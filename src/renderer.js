@@ -1332,8 +1332,8 @@ function renderLeaderboard() {
       <thead>
         <tr>
           <th>System</th>
-          <th>Raw</th>
-          <th>Bounded</th>
+          <th>Raw (P50)</th>
+          <th>Bounded (P50)</th>
         </tr>
       </thead>
       <tbody>
@@ -1344,7 +1344,7 @@ function renderLeaderboard() {
               ${row.label}
             </td>
             <td>${Number.isFinite(row.raw) ? `<span class="metric-value">${row.raw.toFixed(1)}x</span>` : 'n/a'}</td>
-            <td>${Number.isFinite(row.bounded) ? `<span class="metric-value metric-bounded">${row.bounded.toFixed(1)}x</span>` : 'n/a'}</td>
+            <td>${Number.isFinite(row.bounded) ? `<span class="metric-direction-good" aria-hidden="true">↓</span> <span class="metric-value metric-bounded">${row.bounded.toFixed(1)}x</span>` : 'n/a'}</td>
           </tr>
         `).join('')}
       </tbody>
