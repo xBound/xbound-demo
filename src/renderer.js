@@ -1,5 +1,5 @@
 const XBOUND_SUFFIX = ' xBound-ed';
-const BENCHMARKS = ['JOBlight', 'SO-CEB', 'STATS-CEB'];
+const BENCHMARKS = ['JOBlight', 'StackOverflow-CEB', 'STATS-CEB'];
 const IS_ELECTRON = typeof window.xbound !== 'undefined';
 const SYSTEMS = IS_ELECTRON ? ['duckdb', 'postgres', 'fabric dw'] : ['duckdb', 'postgres'];
 function webBasePath() {
@@ -187,7 +187,7 @@ const MAX_SYNCED_PANEL_HEIGHT = 220;
 function benchmarkSlug(benchmark) {
   const b = String(benchmark || '').trim().toLowerCase();
   if (b === 'job' || b === 'joblight') return 'joblight';
-  if (b === 'so-ceb' || b === 'so_ceb' || b === 'so_full_ceb') return 'so_full_ceb';
+  if (b === 'so-ceb' || b === 'so_ceb' || b === 'so_full_ceb' || b === 'stackoverflow-ceb') return 'so_full_ceb';
   if (b === 'stats-ceb' || b === 'stats_ceb') return 'stats_ceb';
   return b.replace(/[^a-z0-9_]+/g, '_');
 }
@@ -417,7 +417,8 @@ function getCurrentQueryData() {
 }
 
 function benchmarkSupportsXboundParamVariants(benchmark) {
-  return String(benchmark || '').toLowerCase() === 'so-ceb';
+  const b = String(benchmark || '').toLowerCase();
+  return b === 'so-ceb' || b === 'stackoverflow-ceb';
 }
 
 function currentXboundSliderParams() {
@@ -1632,7 +1633,7 @@ function canonicalQueryName(benchmark, queryName) {
   const b = String(benchmark || '').toLowerCase();
   const q = String(queryName || '').trim();
   if (!q) return q;
-  if (b === 'joblight' || b === 'job' || b === 'so-ceb' || b === 'so_full_ceb' || b === 'stats-ceb' || b === 'stats_ceb') {
+  if (b === 'joblight' || b === 'job' || b === 'so-ceb' || b === 'stackoverflow-ceb' || b === 'so_full_ceb' || b === 'stats-ceb' || b === 'stats_ceb') {
     if (/^q\d+$/i.test(q)) return `Q${q.replace(/^q/i, '')}`;
     if (/^\d+$/.test(q)) return `Q${q}`;
   }
@@ -1640,7 +1641,8 @@ function canonicalQueryName(benchmark, queryName) {
 }
 
 function xboundParamOptionsForBenchmark(benchmark) {
-  if (String(benchmark).toLowerCase() === 'so-ceb') {
+  const b = String(benchmark).toLowerCase();
+  if (b === 'so-ceb' || b === 'stackoverflow-ceb') {
     return {
       parts: discreteSliderValue(els.xboundParts, 16),
       l0Theta: discreteSliderValue(els.xboundL0Theta, 8),
@@ -2008,7 +2010,7 @@ async function init() {
 
   try {
     await ensureBenchmarkLoaded('JOBlight');
-    await ensureBenchmarkLoaded('SO-CEB');
+    await ensureBenchmarkLoaded('StackOverflow-CEB');
     await ensureBenchmarkLoaded('STATS-CEB');
     populateSelectors();
     syncXboundSliderLabels();
