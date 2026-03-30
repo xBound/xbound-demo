@@ -592,7 +592,7 @@ function renderQErrorBarPlot(entries) {
   const iconHeadSize = Math.max(28, Math.min(44, xStep * 0.42));
   const entryBySystem = new Map(entries.map((entry) => [systemKeyForEntry(entry.system), entry]));
   const benchmarkWarning = benchmarkLoadWarnings.get(els.benchmarkSelect.value) || '';
-  const boundLineColor = '#b8b8b8';
+  const boundLineColor = '#d8d8d8';
 
   ctx.clearRect(0, 0, cssWidth, cssHeight);
   ctx.fillStyle = '#ffffff';
@@ -665,20 +665,10 @@ function renderQErrorBarPlot(entries) {
   ctx.fillText('Result size Q-error [log scale]', 0, 0);
   ctx.restore();
 
-  ctx.strokeStyle = '#1e2b54';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(margin.left, baselineY);
-  ctx.lineTo(cssWidth - margin.right, baselineY);
-  ctx.stroke();
-
-  ctx.fillStyle = '#1e2b54';
-  ctx.font = ESTIMATE_FONT;
   const actualBaseline = entries[0]?.actual;
   const baselineLabel = Number.isFinite(actualBaseline)
     ? `actual: ${formatCardinality(actualBaseline)}`
     : 'actual';
-  ctx.fillText(baselineLabel, margin.left + 8, baselineY - 8);
   if (benchmarkWarning) {
     ctx.fillStyle = '#a33a3a';
     ctx.font = `${PLOT_FONT.warningPx}px ${UI_FONT_FAMILY}`;
@@ -731,7 +721,7 @@ function renderQErrorBarPlot(entries) {
     } else {
     const lineY = y(xboundOverlay.signedQError);
     ctx.strokeStyle = boundLineColor;
-    ctx.lineWidth = 5;
+    ctx.lineWidth = 4;
     ctx.beginPath();
     ctx.moveTo(margin.left, lineY);
     ctx.lineTo(cssWidth - margin.right, lineY);
@@ -760,7 +750,7 @@ function renderQErrorBarPlot(entries) {
   if (lpboundOverlay) {
     const lineY = y(lpboundOverlay.signedQError);
     ctx.strokeStyle = boundLineColor;
-    ctx.lineWidth = 5;
+    ctx.lineWidth = 4;
     ctx.beginPath();
     ctx.moveTo(margin.left, lineY);
     ctx.lineTo(cssWidth - margin.right, lineY);
@@ -776,6 +766,18 @@ function renderQErrorBarPlot(entries) {
     const upperLabelX = cssWidth - margin.right - textWidth - 8;
     ctx.fillText(upperBoundLabel, upperLabelX, lineY - 10);
   }
+
+  // Draw baseline last so it stays on top of the bound bands/lines.
+  ctx.strokeStyle = '#1e2b54';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(margin.left, baselineY);
+  ctx.lineTo(cssWidth - margin.right, baselineY);
+  ctx.stroke();
+
+  ctx.fillStyle = '#1e2b54';
+  ctx.font = ESTIMATE_FONT;
+  ctx.fillText(baselineLabel, margin.left + 8, baselineY - 8);
 
   SYSTEMS.forEach((system, idx) => {
     const entry = entryBySystem.get(system);
