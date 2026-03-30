@@ -280,6 +280,7 @@ async function readBenchmarkEstimates(benchmarkName, xboundParams = null) {
   const aliases = benchmarkAliases(benchmarkName);
 
   const searchedPaths = [];
+  let missingXboundVariant = null;
 
   for (const root of estimationRoots()) {
     for (const alias of aliases) {
@@ -402,7 +403,19 @@ async function readBenchmarkEstimates(benchmarkName, xboundParams = null) {
           .sort();
         if (xboundFiles.length) {
           const preferredSuffix = xboundPreferredSuffix(alias, xboundParams);
-          const chosen = (preferredSuffix && xboundFiles.find((name) => name.endsWith(preferredSuffix))) || xboundFiles[0];
+          let chosen = xboundFiles[0];
+          if (preferredSuffix) {
+            const exact = xboundFiles.find((name) => name.endsWith(preferredSuffix));
+            if (!exact) {
+              const baseName = xboundFiles[0].replace(/_(host|hostname)=.*$/, '');
+              missingXboundVariant = {
+                benchmark: benchmarkName,
+                fileName: `${baseName}${preferredSuffix}`
+              };
+              continue;
+            }
+            chosen = exact;
+          }
           const content = await fs.readFile(path.join(dirPath, chosen), 'utf8');
           const lines = content.split(/\r?\n/);
           for (const rawLine of lines) {
@@ -439,6 +452,18 @@ async function readBenchmarkEstimates(benchmarkName, xboundParams = null) {
         // Try next candidate.
       }
     }
+  }
+
+  if (missingXboundVariant) {
+    return {
+      ok: false,
+      code: 'MISSING_XBOUND_FILE',
+      benchmark: missingXboundVariant.benchmark,
+      fileName: missingXboundVariant.fileName,
+      error: `missing xBound file for ${missingXboundVariant.benchmark} (${missingXboundVariant.fileName})`,
+      searchedPaths,
+      queries: {}
+    };
   }
 
   return {

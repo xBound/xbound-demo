@@ -459,6 +459,15 @@ function currentXboundAvailabilityWarning() {
   return 'xBound estimates are not available for the current benchmark/query.';
 }
 
+function conciseXboundWarningText(rawWarning) {
+  const text = String(rawWarning || '').trim();
+  if (!text) return '';
+  if (text.includes('missing xBound file')) {
+    return 'xBound estimates are missing for the current slider values.';
+  }
+  return text;
+}
+
 function buildEstimateEntries(includeXBound) {
   const queryData = getCurrentQueryData();
   if (!queryData) return [];
@@ -1580,7 +1589,7 @@ function syncSqlInput() {
     const queryData = getCurrentQueryData();
     const showXboundBanner = Boolean(queryData) || Boolean(xboundWarning);
     if (showXboundBanner && xboundWarning) {
-      els.xboundWarning.textContent = `⚠️\u00A0\u00A0${xboundWarning}`;
+      els.xboundWarning.textContent = `⚠️\u00A0\u00A0${conciseXboundWarningText(xboundWarning)}`;
       els.xboundWarning.classList.remove('is-loaded');
       els.xboundWarning.classList.add('is-warning');
       els.xboundWarning.classList.remove('hidden');
@@ -1748,6 +1757,13 @@ async function ensureBenchmarkLoaded(benchmark) {
     }
 
     const estimateResult = await estimateSource(benchmark, xboundParamOptionsForBenchmark(benchmark));
+    if (!estimateResult?.ok) {
+      const err = new Error(estimateResult?.error || `failed to load benchmark data for ${benchmark}`);
+      if (estimateResult?.code) err.code = estimateResult.code;
+      if (estimateResult?.benchmark) err.benchmark = estimateResult.benchmark;
+      if (estimateResult?.fileName) err.fileName = estimateResult.fileName;
+      throw err;
+    }
     if (estimateResult?.ok && estimateResult.queries && typeof estimateResult.queries === 'object') {
       Object.entries(estimateResult.queries).forEach(([queryName, queryData]) => {
         const canonicalName = canonicalQueryName(benchmark, queryName);
