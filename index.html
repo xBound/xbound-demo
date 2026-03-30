@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>How Out-of-Bounds Are Your Cardinality Estimates?</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/codemirror.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/theme/neo.min.css" />
+    <link rel="stylesheet" href="./styles.css?v=e36cc90663c2" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="top-header">
+        <h1>How Out-of-Bounds Are Your Cardinality Estimates?</h1>
+        <div id="appName" class="partner-links" aria-label="Partner links">
+          <a
+            class="partner-link"
+            href="https://www.microsoft.com/en-us/research/group/gray-systems-lab/"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Gray Systems Lab"
+            title="Gray Systems Lab"
+          >
+            <img src="./icons/gsl-logo.jpeg" alt="GSL" class="partner-logo-gsl" />
+          </a>
+          <a
+            class="partner-link"
+            href="https://utndatasystems.github.io"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="UTN Data Systems"
+            title="UTN Data Systems"
+          >
+            <img src="./icons/uds-logo.svg" alt="UTN" class="partner-logo-utn" />
+          </a>
+        </div>
+      </header>
+
+      <main class="layout-grid">
+        <aside class="nav-rail card" aria-label="View navigation">
+          <button id="motivationBtn" class="rail-btn active" aria-label="Motivation" title="Motivation">🎯</button>
+          <button id="dashboardTabBtn" class="rail-btn" aria-label="Dashboard" title="Dashboard">📊</button>
+          <button id="leaderboardBtn" class="rail-btn" aria-label="Leaderboard" title="Leaderboard">🏆</button>
+        </aside>
+
+        <section class="sql-panel card">
+          <div class="sql-left-action">
+            <button id="runBtn" class="run-btn" aria-label="Run query" title="Run query">▶</button>
+          </div>
+          <div class="sql-content">
+            <div class="sql-editor-wrap">
+              <textarea id="sqlInput" spellcheck="false"></textarea>
+            </div>
+            <div class="inline-meta">
+              <span id="statusText">Ready</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="controls-panel card">
+          <h2>Queries</h2>
+          <label for="benchmarkSelect">Benchmark</label>
+          <select id="benchmarkSelect"></select>
+
+          <div id="queryControls">
+            <label for="querySelect">Query</label>
+            <select id="querySelect"></select>
+          </div>
+
+          <div id="planControls" class="plan-controls hidden">
+            <label for="planSystemSelect">Plan system</label>
+            <select id="planSystemSelect"></select>
+          </div>
+        </section>
+
+        <section class="xbound-panel card">
+          <div id="xboundParams" class="xbound-params">
+            <h3>
+              <img src="./icons/xbound-icon.png" alt="xBound" class="xbound-title-icon" />
+              xBound: Parameters
+            </h3>
+            <div id="xboundBalanta" class="xbound-balanta" aria-live="polite">⚖️ Stats overhead: -- MB</div>
+            <label for="xboundParts">Number of partitions: <strong id="xboundPartsValue">16</strong></label>
+            <div class="xbound-slider-group">
+              <input id="xboundParts" type="range" min="0" max="3" step="1" value="2" data-values="4,8,16,32" />
+              <div class="xbound-slider-ticks" aria-hidden="true">
+                <span><i></i><em>4</em></span>
+                <span><i></i><em>8</em></span>
+                <span><i></i><em>16</em></span>
+                <span><i></i><em>32</em></span>
+              </div>
+            </div>
+
+            <label for="xboundL0Theta"><code>ThetaSketch</code> precision of <code>l_0</code> stats: <strong id="xboundL0ThetaValue">8</strong></label>
+            <div class="xbound-slider-group">
+              <input id="xboundL0Theta" type="range" min="0" max="3" step="1" value="1" data-values="5,8,12,16" />
+              <div class="xbound-slider-ticks" aria-hidden="true">
+                <span><i></i><em>5</em></span>
+                <span><i></i><em>8</em></span>
+                <span><i></i><em>12</em></span>
+                <span><i></i><em>16</em></span>
+              </div>
+            </div>
+
+            <label for="xboundHhTheta"><code>ThetaSketch</code> precision of heavy partition stats: <strong id="xboundHhThetaValue">12</strong></label>
+            <div class="xbound-slider-group">
+              <input id="xboundHhTheta" type="range" min="0" max="3" step="1" value="2" data-values="5,8,12,16" />
+              <div class="xbound-slider-ticks" aria-hidden="true">
+                <span><i></i><em>5</em></span>
+                <span><i></i><em>8</em></span>
+                <span><i></i><em>12</em></span>
+                <span><i></i><em>16</em></span>
+              </div>
+            </div>
+            <div id="xboundWarning" class="xbound-warning hidden" role="alert"></div>
+          </div>
+        </section>
+
+        <section class="chart-panel card" id="runPanel">
+          <div class="chart-header-row">
+            <h2>Soundness and Q-error</h2>
+            <div id="chartLegend" class="chart-legend" aria-label="Systems legend"></div>
+          </div>
+          <canvas id="chartCanvas"></canvas>
+        </section>
+
+        <section class="chart-panel card hidden" id="planPanel">
+          <h2>Query Plan Tree</h2>
+          <div id="planTree" class="plan-tree"></div>
+        </section>
+
+        <section class="chart-panel card hidden" id="leaderboardPanel">
+          <h2>Leaderboard</h2>
+          <div id="leaderboardList" class="leaderboard-list"></div>
+        </section>
+
+        <section class="chart-panel card" id="motivationPanel">
+          <div class="motivation-stage">
+            <div class="motivation-nav" aria-label="Motivation slides">
+              <button id="motivationPrevBtn" class="motivation-arrow-btn hidden" aria-label="Previous motivation slide" title="Previous slide">‹</button>
+              <button id="motivationNextBtn" class="motivation-arrow-btn" aria-label="Next motivation slide" title="Next slide">›</button>
+            </div>
+            <figure class="motivation-slide is-active" data-slide="0">
+              <figcaption class="motivation-slide-title">🎯 Motivation: Underestimates in Production</figcaption>
+              <img src="./images/production-cpu-count.png" alt="CPU in production over time" />
+            </figure>
+            <figure class="motivation-slide motivation-slide-systems" data-slide="1">
+              <figcaption class="motivation-slide-title">💡 Our solution: lower bounds!</figcaption>
+              <img src="./images/xbounded-systems.png" alt="xBound-ed systems overview" />
+            </figure>
+            <figure class="motivation-slide" data-slide="2">
+              <figcaption class="motivation-slide-title">For the first time, we have both lower and upper cardinality bounds.<br /><br />Let's see how out-of-bounds are our systems!</figcaption>
+            </figure>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/mode/sql/sql.min.js"></script>
+    <script>window.__XBOUND_BUILD_VERSION__ = "e36cc90663c2";</script>
+    <script src="./renderer.js?v=e36cc90663c2"></script>
+  </body>
+</html>
