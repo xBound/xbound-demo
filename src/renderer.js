@@ -149,6 +149,7 @@ const els = {
   xboundPartsValue: document.getElementById('xboundPartsValue'),
   xboundL0ThetaValue: document.getElementById('xboundL0ThetaValue'),
   xboundHhThetaValue: document.getElementById('xboundHhThetaValue'),
+  xboundBalanta: document.getElementById('xboundBalanta'),
   xboundWarning: document.getElementById('xboundWarning'),
   planSystemSelect: document.getElementById('planSystemSelect'),
   planControls: document.getElementById('planControls'),
@@ -179,6 +180,7 @@ let qerrorBoundMode = { xbound: true, lpbound: true };
 const benchmarkLoadWarnings = new Map();
 let xboundSliderRefreshTimer = 0;
 let xboundSliderRefreshSeq = 0;
+let xboundSizeRefreshSeq = 0;
 let syncedPanelHeight = 0;
 const MAX_SYNCED_PANEL_HEIGHT = 220;
 
@@ -1639,6 +1641,13 @@ function xboundParamOptionsForBenchmark(benchmark) {
   return null;
 }
 
+function xboundSizeParamsForBenchmark(benchmark) {
+  if (benchmarkSupportsXboundParamVariants(benchmark)) {
+    return currentXboundSliderParams();
+  }
+  return { parts: 16, l0Theta: 8, hhTheta: 12 };
+}
+
 function xboundParamCacheKey(benchmark) {
   const params = xboundParamOptionsForBenchmark(benchmark);
   return `${benchmark}|${JSON.stringify(params || {})}`;
@@ -1677,6 +1686,36 @@ function syncXboundSliderLabels() {
   }
   if (els.xboundHhThetaValue) {
     els.xboundHhThetaValue.textContent = String(discreteSliderValue(els.xboundHhTheta, 12));
+  }
+}
+
+function formatSizeMb(mb) {
+  const n = Number(mb);
+  if (!Number.isFinite(n)) return '--';
+  return n >= 100 ? `${Math.round(n)}` : n.toFixed(1);
+}
+
+async function refreshXboundBalantaBadge() {
+  if (!els.xboundBalanta) return;
+  const mySeq = ++xboundSizeRefreshSeq;
+  const benchmark = els.benchmarkSelect.value;
+  const params = xboundSizeParamsForBenchmark(benchmark);
+  const loader = window.xbound?.loadStatsSize;
+  if (typeof loader !== 'function') {
+    els.xboundBalanta.textContent = '⚖️ Stats overhead: n/a';
+    return;
+  }
+  try {
+    const result = await loader(benchmark, params);
+    if (mySeq !== xboundSizeRefreshSeq) return;
+    if (result?.ok && Number.isFinite(Number(result.mb))) {
+      els.xboundBalanta.textContent = `⚖️ Stats overhead: ${formatSizeMb(result.mb)} MB`;
+      return;
+    }
+    els.xboundBalanta.textContent = '⚖️ Stats overhead: n/a';
+  } catch {
+    if (mySeq !== xboundSizeRefreshSeq) return;
+    els.xboundBalanta.textContent = '⚖️ Stats overhead: n/a';
   }
 }
 
@@ -1786,6 +1825,7 @@ function bindEvents() {
     const entries = activeEntries();
     if (currentMode === 'run') renderQErrorBarPlot(entries);
     if (currentMode === 'leaderboard') renderLeaderboard();
+    refreshXboundBalantaBadge();
   });
 
   els.querySelect.addEventListener('change', () => {
@@ -1800,6 +1840,7 @@ function bindEvents() {
     if (!el) return;
     el.addEventListener('input', () => {
       syncXboundSliderLabels();
+      refreshXboundBalantaBadge();
       scheduleXboundSliderRefresh(120);
     });
     el.addEventListener('change', async () => {
@@ -1808,6 +1849,7 @@ function bindEvents() {
         xboundSliderRefreshTimer = 0;
       }
       await refreshForXboundSliderChange();
+      refreshXboundBalantaBadge();
     });
   });
 
@@ -1954,6 +1996,7 @@ async function init() {
     await ensureBenchmarkLoaded('STATS-CEB');
     populateSelectors();
     syncXboundSliderLabels();
+    await refreshXboundBalantaBadge();
     updateXboundParamsState();
     bindEvents();
     renderHtmlLegend();

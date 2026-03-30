@@ -32,6 +32,11 @@ const WORKLOAD_FILE_PREFERENCE = {
   joblight: 'joblight-queries.jsonl',
   stats_ceb: 'stats_ceb-queries.jsonl'
 };
+const SIZE_DIR_MAP = {
+  joblight: { relDir: path.join('imdb', 'joblight'), prefix: 'joblight' },
+  so_full_ceb: { relDir: path.join('so_full', 'so_full_ceb'), prefix: 'so_full_ceb' },
+  stats_ceb: { relDir: path.join('stats', 'stats_ceb'), prefix: 'stats_ceb' }
+};
 
 function estimationRoots() {
   const roots = [];
@@ -47,6 +52,14 @@ function workloadRoots() {
   roots.push(path.join(__dirname, '..', 'robust_memory_estimation'));
   roots.push(path.join(__dirname, 'robust_memory_estimation'));
   return Array.from(new Set(roots.map((root) => path.resolve(root, WORKLOAD_SUFFIX))));
+}
+
+function sizeRoots() {
+  const roots = [];
+  if (process.env.XBOUND_SIZE_ROOT) roots.push(process.env.XBOUND_SIZE_ROOT);
+  roots.push(path.join(__dirname, '..', 'robust_memory_estimation', 'src', 'xbound', 'results', 'size'));
+  roots.push(path.join(__dirname, 'robust_memory_estimation', 'src', 'xbound', 'results', 'size'));
+  return Array.from(new Set(roots.map((root) => path.resolve(root))));
 }
 
 function benchmarkAliases(benchmarkName) {
@@ -179,6 +192,85 @@ function xboundPreferredSuffix(alias, xboundParams) {
     }
   }
   return XBOUND_FILE_PREFERENCE[alias];
+}
+
+function parseParquetBytes(csvText) {
+  const lines = String(csvText || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length <= 1) return null;
+  const header = lines[0].split(',').map((s) => s.trim().toLowerCase());
+  const parquetIdx = header.indexOf('parquet_bytes');
+  let total = 0;
+  let hasValue = false;
+  for (let i = 1; i < lines.length; i += 1) {
+    const cols = lines[i].split(',').map((s) => s.trim());
+    const raw = parquetIdx >= 0 ? cols[parquetIdx] : cols[0];
+    const n = Number(raw);
+    if (!Number.isFinite(n)) continue;
+    total += n;
+    hasValue = true;
+  }
+  return hasValue ? total : null;
+}
+
+async function readCsvParquetBytes(filePath) {
+  const content = await fs.readFile(filePath, 'utf8');
+  return parseParquetBytes(content);
+}
+
+async function readXboundStatsSize(benchmarkName, xboundParams = null) {
+  const benchmark = canonicalBenchmark(benchmarkName);
+  const cfg = SIZE_DIR_MAP[benchmark];
+  if (!cfg) {
+    return { ok: false, error: `Unsupported benchmark for size lookup: ${benchmarkName}` };
+  }
+
+  const parts = Math.trunc(Number(xboundParams?.parts) || 16);
+  const l0Theta = Math.trunc(Number(xboundParams?.l0Theta) || 8);
+  const hhTheta = Math.trunc(Number(xboundParams?.hhTheta) || 12);
+  const lightName = `${cfg.prefix}-hausberg-heavy_theta_l0_norms-p=${parts}-th=${l0Theta}.csv`;
+  const heavyName = `${cfg.prefix}-hausberg-hh_info-th=${hhTheta}.csv`;
+
+  const tried = [];
+  for (const root of sizeRoots()) {
+    const dirPath = path.join(root, cfg.relDir);
+    const lightPath = path.join(dirPath, lightName);
+    const heavyPath = path.join(dirPath, heavyName);
+    tried.push(lightPath, heavyPath);
+    try {
+      const [lightBytes, heavyBytes] = await Promise.all([
+        readCsvParquetBytes(lightPath),
+        readCsvParquetBytes(heavyPath)
+      ]);
+      if (!Number.isFinite(lightBytes) || !Number.isFinite(heavyBytes)) {
+        return {
+          ok: false,
+          error: 'parquet_bytes not found in one or both size files',
+          files: { lightPath, heavyPath }
+        };
+      }
+      const totalBytes = lightBytes + heavyBytes;
+      return {
+        ok: true,
+        benchmark,
+        params: { parts, l0Theta, hhTheta },
+        bytes: totalBytes,
+        mb: totalBytes / (1024 * 1024),
+        files: { lightPath, heavyPath },
+        components: { lightBytes, heavyBytes }
+      };
+    } catch {
+      // Try next root.
+    }
+  }
+
+  return {
+    ok: false,
+    error: `No matching size files found for ${benchmarkName} with parts=${parts}, l0-theta=${l0Theta}, hh-theta=${hhTheta}`,
+    tried
+  };
 }
 
 async function readBenchmarkEstimates(benchmarkName, xboundParams = null) {
@@ -587,6 +679,9 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('xbound:estimate-custom-query', async (_event, benchmark, sql, xboundParams, queryTag) => {
     return estimateCustomQuery(benchmark, sql, xboundParams, queryTag);
+  });
+  ipcMain.handle('xbound:load-stats-size', async (_event, benchmark, xboundParams) => {
+    return readXboundStatsSize(benchmark, xboundParams);
   });
 
   createWindow();

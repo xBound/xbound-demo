@@ -290,6 +290,7 @@ body {
   border: 1px solid var(--line);
   border-radius: 2px;
   padding: 10px;
+  position: relative;
   display: grid;
   grid-template-columns: 1fr;
   gap: 6px;
@@ -315,6 +316,19 @@ body {
   width: 17px;
   height: 17px;
   object-fit: contain;
+}
+
+.xbound-balanta {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  font-size: 0.74rem;
+  color: #475071;
+  background: #edf1fb;
+  border: 1px solid #d5dced;
+  border-radius: 999px;
+  padding: 3px 8px;
+  line-height: 1.1;
 }
 
 .xbound-params input {
